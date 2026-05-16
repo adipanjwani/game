@@ -190,58 +190,58 @@ export default function KitchenPage() {
   }
 
   return (
-    <div className={`min-h-screen bg-background p-6 ${sirenActive ? "animate-pulse" : ""}`}>
+    <div className={`h-screen bg-background p-4 flex flex-col overflow-hidden ${sirenActive ? "animate-pulse" : ""}`}>
       {/* Siren Alert Overlay */}
       {sirenActive && (
         <div className="fixed inset-0 z-50 bg-red-500/30 pointer-events-none flex items-center justify-center animate-pulse">
-          <div className="bg-red-600 text-white px-12 py-8 rounded-2xl flex items-center gap-4 shadow-2xl">
-            <AlertTriangle className="h-16 w-16" />
-            <span className="text-4xl font-bold">STAFF NEEDED!</span>
-            <AlertTriangle className="h-16 w-16" />
+          <div className="bg-red-600 text-white px-8 py-6 rounded-2xl flex items-center gap-4 shadow-2xl">
+            <AlertTriangle className="h-12 w-12" />
+            <span className="text-3xl font-bold">STAFF NEEDED!</span>
+            <AlertTriangle className="h-12 w-12" />
           </div>
         </div>
       )}
 
       {/* Header */}
-      <header className="mb-6">
-        <div className="flex items-center gap-3">
-          <Pizza className="h-10 w-10 text-primary" />
-          <h1 className="text-4xl font-bold text-foreground">Kitchen Display</h1>
+      <header className="shrink-0 mb-3">
+        <div className="flex items-center gap-2">
+          <Pizza className="h-8 w-8 text-primary" />
+          <h1 className="text-2xl font-bold text-foreground">Kitchen Display</h1>
         </div>
       </header>
 
       {/* Orders Display */}
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground text-2xl">
+        <div className="flex-1 flex items-center justify-center text-muted-foreground text-xl">
           Loading orders...
         </div>
       ) : activeOrders.length === 0 ? (
-        <div className="text-center py-24">
-          <Pizza className="h-24 w-24 mx-auto mb-6 text-muted-foreground/50" />
-          <p className="text-3xl text-muted-foreground">No active orders</p>
-          <p className="text-lg text-muted-foreground mt-2">
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <Pizza className="h-16 w-16 mb-4 text-muted-foreground/50" />
+          <p className="text-2xl text-muted-foreground">No active orders</p>
+          <p className="text-sm text-muted-foreground mt-1">
             Waiting for new orders...
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-fr">
+        <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 auto-rows-fr overflow-hidden">
           {activeOrders.map((order) => {
             const overdue = isOverdue(order.createdAt)
             const isNew = newOrderIds.has(order.id)
             return (
             <div
               key={order.id}
-              className={`border-4 rounded-2xl p-8 min-h-[250px] flex flex-col transition-all ${
+              className={`border-2 rounded-xl p-4 flex flex-col transition-all ${
                 overdue 
                   ? "bg-red-500/30 border-red-500 animate-pulse" 
                   : isNew
-                    ? "bg-green-500/30 border-green-500 animate-pulse ring-4 ring-green-400"
+                    ? "bg-green-500/30 border-green-500 animate-pulse ring-2 ring-green-400"
                     : "bg-card border-border"
               }`}
             >
               {/* Timer */}
-              <div className="flex items-center justify-end mb-4">
-                <span className={`text-2xl font-mono font-bold ${
+              <div className="flex items-center justify-end mb-2">
+                <span className={`text-xl font-mono font-bold ${
                   overdue ? "text-red-500" : "text-foreground"
                 }`}>
                   {getTimeRemaining(order.createdAt)}
@@ -249,16 +249,16 @@ export default function KitchenPage() {
               </div>
 
               {/* Order Items */}
-              <div className="flex-1 flex flex-col justify-center space-y-6">
+              <div className="flex-1 flex flex-col justify-center space-y-2">
                 {order.items.map((item, index) => (
                   <div
                     key={index}
                     className="flex items-center justify-between"
                   >
-                    <span className="text-4xl font-bold text-foreground">
+                    <span className="text-2xl font-bold text-foreground">
                       {item.pizza?.name || item.side?.name}
                     </span>
-                    <span className="text-2xl text-muted-foreground font-semibold">
+                    <span className="text-lg text-muted-foreground font-semibold">
                       {item.quantity > 1 && `${item.quantity}x `}
                       {item.pizza && (item.isFullPizza ? "Full" : "Half")}
                     </span>

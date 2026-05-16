@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { pizzas, sides, Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -157,131 +157,128 @@ export default function FrontPage() {
   ]
 
   return (
-    <div className="h-screen bg-background p-6">
-      {/* Menu Panel */}
-      <div className="flex-1 flex flex-col min-h-0">
-        <header className="mb-4">
-          <h1 className="text-3xl font-bold text-foreground">Menu</h1>
-        </header>
+    <div className="h-screen bg-background p-4 flex flex-col overflow-hidden">
+      {/* Header */}
+      <header className="shrink-0 mb-2">
+        <h1 className="text-2xl font-bold text-foreground">Menu</h1>
+      </header>
 
-        <div className="grid grid-cols-2 gap-4 content-start overflow-y-auto">
-          {allItems.map((item) => {
-            const isPizza = item.type === "pizza"
-            const isFullPizza = isPizza ? pizzaSizes[item.id] : false
-            const orderId = placedOrders[item.id]
-            const isOrdered = !!orderId
-            const qty = quantities[item.id] || 1
-            
-            return (
-              <div key={item.id} className="flex items-center bg-card border-2 border-border rounded-xl p-4 min-h-[72px] touch-manipulation">
-                {/* Left: Name */}
-                <span className="text-xl font-bold text-foreground whitespace-nowrap w-40">{item.name}</span>
+      {/* Menu Grid - fills available space */}
+      <div className="flex-1 grid grid-cols-2 gap-2 auto-rows-fr overflow-hidden">
+        {allItems.map((item) => {
+          const isPizza = item.type === "pizza"
+          const isFullPizza = isPizza ? pizzaSizes[item.id] : false
+          const orderId = placedOrders[item.id]
+          const isOrdered = !!orderId
+          const qty = quantities[item.id] || 1
+          
+          return (
+            <div key={item.id} className="flex items-center bg-card border border-border rounded-lg p-2 touch-manipulation">
+              {/* Left: Name */}
+              <span className="text-sm font-bold text-foreground whitespace-nowrap w-24 shrink-0">{item.name}</span>
 
-                {/* Center: Quantity + Toggle */}
-                <div className="flex-1 flex items-center justify-center gap-6">
-                  {/* Quantity Controls */}
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      className="h-14 w-14 p-0 text-2xl touch-manipulation"
-                      onClick={() => handleQuantityChange(item.id, -1)}
-                      disabled={isOrdered}
+              {/* Center: Quantity + Toggle */}
+              <div className="flex-1 flex items-center justify-center gap-2">
+                {/* Quantity Controls */}
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-8 p-0 touch-manipulation"
+                    onClick={() => handleQuantityChange(item.id, -1)}
+                    disabled={isOrdered}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="w-6 text-center font-bold text-sm">{qty}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-8 p-0 touch-manipulation"
+                    onClick={() => handleQuantityChange(item.id, 1)}
+                    disabled={isOrdered}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                
+                {isPizza && !('noSizeToggle' in item && item.noSizeToggle) && (
+                  <div className="flex items-center gap-1 select-none">
+                    <span 
+                      className={`text-xs font-bold cursor-pointer px-2 py-1 rounded touch-manipulation ${!isFullPizza ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
+                      onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: false }))}
                     >
-                      <Minus className="h-6 w-6" />
-                    </Button>
-                    <span className="w-12 text-center font-bold text-2xl">{qty}</span>
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      className="h-14 w-14 p-0 text-2xl touch-manipulation"
-                      onClick={() => handleQuantityChange(item.id, 1)}
-                      disabled={isOrdered}
+                      Half
+                    </span>
+                    <Switch
+                      checked={isFullPizza}
+                      onCheckedChange={(checked) => setPizzaSizes((prev) => ({ ...prev, [item.id]: checked }))}
+                    />
+                    <span 
+                      className={`text-xs font-bold cursor-pointer px-2 py-1 rounded touch-manipulation ${isFullPizza ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
+                      onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: true }))}
                     >
-                      <Plus className="h-6 w-6" />
-                    </Button>
+                      Full
+                    </span>
                   </div>
-                  
-                  {isPizza && !('noSizeToggle' in item && item.noSizeToggle) && (
-                    <div className="flex items-center gap-3 select-none">
-                      <span 
-                        className={`text-lg font-bold cursor-pointer px-3 py-2 rounded-lg touch-manipulation ${!isFullPizza ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
-                        onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: false }))}
-                      >
-                        Half
-                      </span>
-                      <Switch
-                        checked={isFullPizza}
-                        onCheckedChange={(checked) => setPizzaSizes((prev) => ({ ...prev, [item.id]: checked }))}
-                        className="scale-150"
-                      />
-                      <span 
-                        className={`text-lg font-bold cursor-pointer px-3 py-2 rounded-lg touch-manipulation ${isFullPizza ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
-                        onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: true }))}
-                      >
-                        Full
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Right: Buttons */}
-                <div className="flex gap-3 w-72">
-                  {!isOrdered ? (
-                    <Button
-                      size="lg"
-                      className="h-14 flex-1 text-xl font-bold touch-manipulation active:scale-95 transition-transform"
-                      onClick={() => handleOrder(item.type, item.id)}
-                    >
-                      Order
-                    </Button>
-                  ) : (
-                    <>
-                      <Button
-                        size="lg"
-                        variant="default"
-                        className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-14 flex-1 text-lg font-bold touch-manipulation active:scale-95 transition-transform"
-                        onClick={() => handleDelivered(orderId, item.id)}
-                      >
-                        Delivered
-                      </Button>
-                      <Button
-                        size="lg"
-                        variant="destructive"
-                        className="h-14 flex-1 text-lg font-bold touch-manipulation active:scale-95 transition-transform"
-                        onClick={() => handleCancel(orderId, item.id)}
-                      >
-                        Cancel
-                      </Button>
-                    </>
-                  )}
-                </div>
+                )}
               </div>
-            )
-          })}
-        </div>
 
-        {/* Call Staff Button - Hold to activate siren */}
-        <div className="flex justify-center mt-6">
-          <Button
-            size="lg"
-            variant="destructive"
-            className={`h-20 px-24 text-2xl font-bold select-none touch-manipulation transition-all duration-100 ${
-              isCallingStaff 
-                ? "bg-red-800 scale-95 ring-4 ring-red-400 animate-pulse" 
-                : "bg-red-600 hover:bg-red-700 active:bg-red-800"
-            }`}
-            onMouseDown={handleSirenStart}
-            onMouseUp={handleSirenStop}
-            onMouseLeave={handleSirenStop}
-            onTouchStart={handleSirenStart}
-            onTouchEnd={handleSirenStop}
-          >
-            {isCallingStaff ? "CALLING STAFF..." : "HOLD TO CALL STAFF"}
-          </Button>
-        </div>
+              {/* Right: Buttons */}
+              <div className="flex gap-1 w-44 shrink-0">
+                {!isOrdered ? (
+                  <Button
+                    size="sm"
+                    className="h-8 flex-1 text-sm font-bold touch-manipulation active:scale-95 transition-transform"
+                    onClick={() => handleOrder(item.type, item.id)}
+                  >
+                    Order
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-8 flex-1 text-xs font-bold touch-manipulation active:scale-95 transition-transform"
+                      onClick={() => handleDelivered(orderId, item.id)}
+                    >
+                      Delivered
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-8 flex-1 text-xs font-bold touch-manipulation active:scale-95 transition-transform"
+                      onClick={() => handleCancel(orderId, item.id)}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
+      {/* Call Staff Button */}
+      <div className="shrink-0 flex justify-center mt-2">
+        <Button
+          size="lg"
+          variant="destructive"
+          className={`h-12 px-12 text-lg font-bold select-none touch-manipulation transition-all duration-100 ${
+            isCallingStaff 
+              ? "bg-red-800 scale-95 ring-4 ring-red-400 animate-pulse" 
+              : "bg-red-600 hover:bg-red-700 active:bg-red-800"
+          }`}
+          onMouseDown={handleSirenStart}
+          onMouseUp={handleSirenStop}
+          onMouseLeave={handleSirenStop}
+          onTouchStart={handleSirenStart}
+          onTouchEnd={handleSirenStop}
+        >
+          {isCallingStaff ? "CALLING STAFF..." : "HOLD TO CALL STAFF"}
+        </Button>
+      </div>
     </div>
   )
 }
