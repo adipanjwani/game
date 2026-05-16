@@ -31,17 +31,7 @@ export default function FrontPage() {
       (o: Order) => o.status === "pending" || o.status === "preparing"
     )
     setActiveOrders(cooking)
-    
-    setPlacedOrders((prev) => {
-      const activeOrderIds = new Set(cooking.map((o: Order) => o.id))
-      const updated: Record<string, string> = {}
-      for (const [itemId, orderId] of Object.entries(prev)) {
-        if (activeOrderIds.has(orderId)) {
-          updated[itemId] = orderId
-        }
-      }
-      return updated
-    })
+    // Don't clear placedOrders here - only clear when user clicks Delivered/Cancel
   }
 
   // Initial fetch and SSE for real-time updates
