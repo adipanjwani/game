@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Order, OrderItem } from "@/lib/pizza-data"
 
-// In-memory store for orders (resets on server restart)
-// For production, use a database
-let orders: Order[] = []
+// Use globalThis to persist orders across hot module reloads
+const globalForOrders = globalThis as unknown as { orders: Order[] }
+if (!globalForOrders.orders) {
+  globalForOrders.orders = []
+}
+const orders = globalForOrders.orders
 
 export async function GET() {
   return NextResponse.json({ orders })

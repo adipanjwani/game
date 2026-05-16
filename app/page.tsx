@@ -28,11 +28,9 @@ export default function FrontPage() {
     const fetchOrders = async () => {
       const res = await fetch("/api/orders")
       const data = await res.json()
-      console.log("[v0] All orders from API:", data.orders.map((o: Order) => ({ id: o.id, status: o.status })))
       const cooking = data.orders.filter(
         (o: Order) => o.status === "pending" || o.status === "preparing"
       )
-      console.log("[v0] Active orders:", cooking.map((o: Order) => ({ id: o.id, status: o.status })))
       setActiveOrders(cooking)
       
       setPlacedOrders((prev) => {
@@ -43,7 +41,6 @@ export default function FrontPage() {
             updated[itemId] = orderId
           }
         }
-        console.log("[v0] PlacedOrders before:", prev, "after:", updated)
         return updated
       })
     }
@@ -89,7 +86,6 @@ export default function FrontPage() {
   }
 
   const handleDelivered = async (orderId: string, itemId: string) => {
-    console.log("[v0] handleDelivered called:", { orderId, itemId })
     await fetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -103,7 +99,6 @@ export default function FrontPage() {
   }
 
   const handleCancel = async (orderId: string, itemId: string) => {
-    console.log("[v0] handleCancel called:", { orderId, itemId })
     await fetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
