@@ -135,20 +135,20 @@ export default function FrontPage() {
   ]
 
   return (
-    <div className="h-screen bg-background p-4 flex gap-4 overflow-hidden">
+    <div className="h-dvh bg-background p-2 md:p-3 lg:p-4 flex flex-col lg:flex-row gap-2 md:gap-3 lg:gap-4 overflow-hidden">
       {/* Menu Panel */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <header className="flex items-center justify-between mb-3 shrink-0">
-          <h1 className="text-2xl font-bold text-foreground">Menu</h1>
+        <header className="flex items-center justify-between mb-2 md:mb-3 shrink-0">
+          <h1 className="text-lg md:text-xl lg:text-2xl font-bold text-foreground">Menu</h1>
           <Link href="/kitchen">
-            <Button variant="outline" size="default" className="gap-2">
-              <ChefHat className="h-5 w-5" />
-              Kitchen
+            <Button variant="outline" size="sm" className="gap-1 md:gap-2 text-xs md:text-sm">
+              <ChefHat className="h-4 w-4" />
+              <span className="hidden sm:inline">Kitchen</span>
             </Button>
           </Link>
         </header>
 
-        <div className="flex-1 grid grid-cols-2 gap-2 auto-rows-fr overflow-hidden">
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-1.5 md:gap-2 auto-rows-fr overflow-y-auto overflow-x-hidden">
           {allItems.map((item) => {
             const isPizza = item.type === "pizza"
             const isFullPizza = isPizza ? pizzaSizes[item.id] : false
@@ -157,39 +157,39 @@ export default function FrontPage() {
             const qty = quantities[item.id] || 1
             
             return (
-              <div key={item.id} className="flex items-center bg-card border border-border rounded-lg px-4 py-3 min-h-0">
+              <div key={item.id} className="flex items-center bg-card border border-border rounded-md md:rounded-lg px-2 md:px-3 lg:px-4 py-1.5 md:py-2 lg:py-3 min-h-0">
                 {/* Left: Name */}
-                <span className="text-base font-bold text-foreground whitespace-nowrap w-28 shrink-0">{item.name}</span>
+                <span className="text-xs md:text-sm lg:text-base font-bold text-foreground whitespace-nowrap w-16 md:w-20 lg:w-28 shrink-0">{item.name}</span>
 
                 {/* Center: Quantity + Toggle */}
-                <div className="flex-1 flex items-center justify-center gap-4">
+                <div className="flex-1 flex items-center justify-center gap-2 md:gap-3 lg:gap-4">
                   {/* Quantity Controls */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 md:gap-1.5 lg:gap-2">
                     <Button
                       variant="outline"
-                      size="lg"
-                      className="h-12 w-12 p-0 touch-manipulation active:scale-95 transition-transform"
+                      size="sm"
+                      className="h-7 w-7 md:h-9 md:w-9 lg:h-12 lg:w-12 p-0 touch-manipulation active:scale-95 transition-transform"
                       onClick={() => handleQuantityChange(item.id, -1)}
                       disabled={isOrdered}
                     >
-                      <Minus className="h-5 w-5" />
+                      <Minus className="h-3 w-3 md:h-4 md:w-4 lg:h-5 lg:w-5" />
                     </Button>
-                    <span className="w-8 text-center font-bold text-lg">{qty}</span>
+                    <span className="w-5 md:w-6 lg:w-8 text-center font-bold text-sm md:text-base lg:text-lg">{qty}</span>
                     <Button
                       variant="outline"
-                      size="lg"
-                      className="h-12 w-12 p-0 touch-manipulation active:scale-95 transition-transform"
+                      size="sm"
+                      className="h-7 w-7 md:h-9 md:w-9 lg:h-12 lg:w-12 p-0 touch-manipulation active:scale-95 transition-transform"
                       onClick={() => handleQuantityChange(item.id, 1)}
                       disabled={isOrdered}
                     >
-                      <Plus className="h-5 w-5" />
+                      <Plus className="h-3 w-3 md:h-4 md:w-4 lg:h-5 lg:w-5" />
                     </Button>
                   </div>
                   
                   {isPizza && !('noSizeToggle' in item && item.noSizeToggle) && (
-                    <div className="flex items-center gap-1 select-none">
+                    <div className="flex items-center gap-0.5 md:gap-1 select-none">
                       <span 
-                        className={`text-xs font-semibold cursor-pointer px-1 ${!isFullPizza ? "text-primary" : "text-muted-foreground"}`}
+                        className={`text-[10px] md:text-xs font-semibold cursor-pointer px-0.5 md:px-1 ${!isFullPizza ? "text-primary" : "text-muted-foreground"}`}
                         onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: false }))}
                       >
                         Half
@@ -197,9 +197,10 @@ export default function FrontPage() {
                       <Switch
                         checked={isFullPizza}
                         onCheckedChange={(checked) => setPizzaSizes((prev) => ({ ...prev, [item.id]: checked }))}
+                        className="scale-75 md:scale-90 lg:scale-100"
                       />
                       <span 
-                        className={`text-xs font-semibold cursor-pointer px-1 ${isFullPizza ? "text-primary" : "text-muted-foreground"}`}
+                        className={`text-[10px] md:text-xs font-semibold cursor-pointer px-0.5 md:px-1 ${isFullPizza ? "text-primary" : "text-muted-foreground"}`}
                         onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: true }))}
                       >
                         Full
@@ -209,11 +210,11 @@ export default function FrontPage() {
                 </div>
 
                 {/* Right: Buttons */}
-                <div className="flex gap-2 w-52 shrink-0">
+                <div className="flex gap-1 md:gap-1.5 lg:gap-2 w-20 md:w-32 lg:w-52 shrink-0">
                   {!isOrdered ? (
                     <Button
-                      size="lg"
-                      className="h-12 flex-1 text-base font-bold touch-manipulation active:scale-95 transition-transform"
+                      size="sm"
+                      className="h-7 md:h-9 lg:h-12 flex-1 text-xs md:text-sm lg:text-base font-bold touch-manipulation active:scale-95 transition-transform"
                       onClick={() => handleOrder(item.type, item.id)}
                     >
                       Order
@@ -221,20 +222,22 @@ export default function FrontPage() {
                   ) : (
                     <>
                       <Button
-                        size="lg"
+                        size="sm"
                         variant="default"
-                        className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-12 flex-1 text-sm font-bold touch-manipulation active:scale-95 transition-transform"
+                        className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-7 md:h-9 lg:h-12 flex-1 text-[10px] md:text-xs lg:text-sm font-bold touch-manipulation active:scale-95 transition-transform"
                         onClick={() => handleDelivered(orderId, item.id)}
                       >
-                        Delivered
+                        <span className="hidden md:inline">Delivered</span>
+                        <Check className="h-4 w-4 md:hidden" />
                       </Button>
                       <Button
-                        size="lg"
+                        size="sm"
                         variant="destructive"
-                        className="h-12 flex-1 text-sm font-bold touch-manipulation active:scale-95 transition-transform"
+                        className="h-7 md:h-9 lg:h-12 flex-1 text-[10px] md:text-xs lg:text-sm font-bold touch-manipulation active:scale-95 transition-transform"
                         onClick={() => handleCancel(orderId, item.id)}
                       >
-                        Cancel
+                        <span className="hidden md:inline">Cancel</span>
+                        <X className="h-4 w-4 md:hidden" />
                       </Button>
                     </>
                   )}
@@ -245,11 +248,11 @@ export default function FrontPage() {
         </div>
 
         {/* Call Staff Button - Hold to activate siren */}
-        <div className="flex justify-center mt-2 shrink-0">
+        <div className="flex justify-center mt-1.5 md:mt-2 shrink-0">
           <Button
             size="lg"
             variant="destructive"
-            className={`h-14 px-16 text-xl font-bold select-none transition-all duration-150 ${
+            className={`h-10 md:h-12 lg:h-14 px-6 md:px-10 lg:px-16 text-sm md:text-lg lg:text-xl font-bold select-none transition-all duration-150 ${
               isCallingStaff 
                 ? "bg-red-800 scale-95 ring-4 ring-red-400 animate-pulse" 
                 : "bg-red-600 hover:bg-red-700"
@@ -265,8 +268,8 @@ export default function FrontPage() {
         </div>
       </div>
 
-      {/* Cooking Panel */}
-      <div className="w-64 bg-card border border-border rounded-lg p-3 flex flex-col min-h-0 overflow-hidden shrink-0">
+      {/* Cooking Panel - Hidden on mobile, shown on larger screens */}
+      <div className="hidden lg:flex w-64 bg-card border border-border rounded-lg p-3 flex-col min-h-0 overflow-hidden shrink-0">
         <h2 className="text-base font-bold text-foreground mb-2 flex items-center gap-2 shrink-0">
           <ChefHat className="h-5 w-5 text-primary" />
           Now Cooking
