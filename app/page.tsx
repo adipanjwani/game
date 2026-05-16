@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { pizzas, sides, Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -65,7 +65,7 @@ export default function FrontPage() {
     }))
   }
 
-  const handleOrder = useCallback(async (type: "pizza" | "side", id: string) => {
+  const handleOrder = (type: "pizza" | "side", id: string) => {
     // Prevent double-clicks - check if already ordered
     if (placedOrders[id]) return
     
@@ -78,75 +78,73 @@ export default function FrontPage() {
     // Optimistic UI update - show as ordered immediately
     setPlacedOrders((prev) => ({ ...prev, [id]: "pending" }))
 
-    try {
-      const orderItems = [{
-        ...(type === "pizza" ? { pizza: item } : { side: item }),
-        isFullPizza: type === "pizza" ? pizzaSizes[id] : false,
-        quantity: quantities[id] || 1,
-      }]
+    const orderItems = [{
+      ...(type === "pizza" ? { pizza: item } : { side: item }),
+      isFullPizza: type === "pizza" ? pizzaSizes[id] : false,
+      quantity: quantities[id] || 1,
+    }]
 
-      const res = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: orderItems }),
-      })
-      
-      const data = await res.json()
+    // Fire and forget - don't block UI
+    fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: orderItems }),
+    }).then(res => res.json()).then(data => {
       if (data.order) {
         setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
       }
-    } catch {
+    }).catch(() => {
       // Revert on error
       setPlacedOrders((prev) => {
         const updated = { ...prev }
         delete updated[id]
         return updated
       })
-    }
-  }, [placedOrders, pizzaSizes, quantities])
+    })
+  }
 
-  const handleDelivered = useCallback(async (orderId: string, itemId: string) => {
+  const handleDelivered = (orderId: string, itemId: string) => {
     // Optimistic UI - remove immediately
     setPlacedOrders((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
       return updated
     })
-    // Fire and forget - don't wait
+    // Fire and forget
     fetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId, status: "completed" }),
     })
-  }, [])
+  }
 
-  const handleCancel = useCallback(async (orderId: string, itemId: string) => {
+  const handleCancel = (orderId: string, itemId: string) => {
     // Optimistic UI - remove immediately
     setPlacedOrders((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
       return updated
     })
-    // Fire and forget - don't wait
+    // Fire and forget
     fetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId, status: "completed" }),
     })
-  }, [])
+  }
 
-  const handleSirenStart = async () => {
+  const handleSirenStart = () => {
     setIsCallingStaff(true)
-    await fetch("/api/siren", {
+    fetch("/api/siren", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: true }),
     })
   }
 
-  const handleSirenStop = async () => {
+  const handleSirenStop = () => {
     setIsCallingStaff(false)
-    await fetch("/api/siren", {
+    fetch("/api/siren", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: false }),
