@@ -82,12 +82,7 @@ export async function DELETE(request: NextRequest) {
   const action = searchParams.get("action")
 
   if (action === "clear-completed") {
-    // Remove completed orders from the array in place
-    for (let i = orders.length - 1; i >= 0; i--) {
-      if (orders[i].status === "completed") {
-        orders.splice(i, 1)
-      }
-    }
+    orders = orders.filter((o) => o.status !== "completed")
     return NextResponse.json({ success: true })
   }
 
