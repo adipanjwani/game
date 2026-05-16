@@ -143,29 +143,30 @@ export default function KitchenPage() {
   }
 
   return (
-    <div className={`h-screen bg-background p-4 flex flex-col overflow-hidden ${sirenActive ? "animate-pulse" : ""}`}>
+    <div className={`h-[100dvh] bg-background p-2 sm:p-3 lg:p-4 flex flex-col overflow-hidden ${sirenActive ? "animate-pulse" : ""}`}>
       {/* Siren Alert Overlay */}
       {sirenActive && (
         <div className="fixed inset-0 z-50 bg-red-500/30 pointer-events-none flex items-center justify-center animate-pulse">
-          <div className="bg-red-600 text-white px-8 py-6 rounded-xl flex items-center gap-3 shadow-2xl">
-            <AlertTriangle className="h-10 w-10" />
-            <span className="text-2xl font-bold">STAFF NEEDED!</span>
-            <AlertTriangle className="h-10 w-10" />
+          <div className="bg-red-600 text-white px-4 sm:px-6 lg:px-8 py-4 sm:py-5 lg:py-6 rounded-lg sm:rounded-xl flex items-center gap-2 sm:gap-3 shadow-2xl">
+            <AlertTriangle className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10" />
+            <span className="text-lg sm:text-xl lg:text-2xl font-bold">STAFF NEEDED!</span>
+            <AlertTriangle className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10" />
           </div>
         </div>
       )}
 
       {/* Header */}
-      <header className="mb-3 shrink-0">
+      <header className="mb-2 sm:mb-3 shrink-0">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Pizza className="h-7 w-7 text-primary" />
-            <h1 className="text-2xl font-bold text-foreground">Kitchen Display</h1>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Pizza className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-primary" />
+            <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-foreground">Kitchen Display</h1>
           </div>
-          <Button asChild size="default">
+          <Button asChild size="sm" className="text-xs sm:text-sm">
             <Link href="/">
-              <Monitor className="h-4 w-4 mr-2" />
-              Front View
+              <Monitor className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Front View</span>
+              <span className="sm:hidden">Front</span>
             </Link>
           </Button>
         </div>
@@ -173,33 +174,33 @@ export default function KitchenPage() {
 
       {/* Orders Display */}
       {isLoading ? (
-        <div className="flex-1 flex items-center justify-center text-muted-foreground text-xl">
+        <div className="flex-1 flex items-center justify-center text-muted-foreground text-base sm:text-lg lg:text-xl">
           Loading orders...
         </div>
       ) : activeOrders.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center">
-          <Pizza className="h-16 w-16 mb-4 text-muted-foreground/50" />
-          <p className="text-2xl text-muted-foreground">No active orders</p>
-          <p className="text-base text-muted-foreground mt-1">
+          <Pizza className="h-10 w-10 sm:h-12 sm:w-12 lg:h-16 lg:w-16 mb-2 sm:mb-3 lg:mb-4 text-muted-foreground/50" />
+          <p className="text-lg sm:text-xl lg:text-2xl text-muted-foreground">No active orders</p>
+          <p className="text-xs sm:text-sm lg:text-base text-muted-foreground mt-1">
             Waiting for new orders...
           </p>
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 auto-rows-fr overflow-hidden">
+        <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-1.5 sm:gap-2 lg:gap-3 auto-rows-fr overflow-hidden">
           {activeOrders.map((order) => {
             const overdue = isOverdue(order.createdAt)
             return (
             <div
               key={order.id}
-              className={`border-2 rounded-xl p-4 flex flex-col ${
+              className={`border-2 rounded-lg sm:rounded-xl p-2 sm:p-3 lg:p-4 flex flex-col ${
                 overdue 
                   ? "bg-red-500/20 border-red-500 animate-pulse" 
                   : "bg-card border-border"
               }`}
             >
               {/* Timer */}
-              <div className="flex items-center justify-end mb-2">
-                <span className={`text-xl font-mono font-bold ${
+              <div className="flex items-center justify-end mb-1 sm:mb-2">
+                <span className={`text-base sm:text-lg lg:text-xl font-mono font-bold ${
                   overdue ? "text-red-500" : "text-foreground"
                 }`}>
                   {getTimeRemaining(order.createdAt)}
@@ -207,16 +208,16 @@ export default function KitchenPage() {
               </div>
 
               {/* Order Items */}
-              <div className="flex-1 flex flex-col justify-center space-y-2">
+              <div className="flex-1 flex flex-col justify-center space-y-1 sm:space-y-2">
                 {order.items.map((item, index) => (
                   <div
                     key={index}
                     className="flex items-center justify-between"
                   >
-                    <span className="text-2xl font-bold text-foreground">
+                    <span className="text-base sm:text-xl lg:text-2xl font-bold text-foreground">
                       {item.pizza?.name || item.side?.name}
                     </span>
-                    <span className="text-lg text-muted-foreground font-semibold">
+                    <span className="text-xs sm:text-sm lg:text-lg text-muted-foreground font-semibold">
                       {item.quantity > 1 && `${item.quantity}x `}
                       {item.pizza && (item.isFullPizza ? "Full" : "Half")}
                     </span>
