@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { pizzas, sides, Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
@@ -237,23 +237,47 @@ export default function FrontPage() {
     // SSE will confirm the update
   }
 
-  const handleSirenStart = async () => {
+  const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  const handleSirenStart = () => {
     setIsCallingStaff(true)
-    await fetch("/api/siren", {
+    // Send immediately
+    fetch("/api/siren", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: true }),
     })
+    // Keep sending every 200ms to keep siren alive (server auto-deactivates after 500ms)
+    sirenIntervalRef.current = setInterval(() => {
+      fetch("/api/siren", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: true }),
+      })
+    }, 200)
   }
 
-  const handleSirenStop = async () => {
+  const handleSirenStop = () => {
     setIsCallingStaff(false)
-    await fetch("/api/siren", {
+    if (sirenIntervalRef.current) {
+      clearInterval(sirenIntervalRef.current)
+      sirenIntervalRef.current = null
+    }
+    fetch("/api/siren", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: false }),
     })
   }
+
+  // Clean up siren interval on unmount
+  useEffect(() => {
+    return () => {
+      if (sirenIntervalRef.current) {
+        clearInterval(sirenIntervalRef.current)
+      }
+    }
+  }, [])
 
   const allItems = [
     ...pizzas.map((p) => ({ ...p, type: "pizza" as const })),
