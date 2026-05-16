@@ -15,42 +15,69 @@ export default function KitchenPage() {
   const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
   const audioContextRef = useRef<AudioContext | null>(null)
   const oscillatorRef = useRef<OscillatorNode | null>(null)
-
-  const fetchOrders = useCallback(async () => {
+  const prevOrderCountRef = useRef<number>(0)
+  
+  // Play notification sound for new orders
+  const playNotificationSound = useCallback(() => {
     try {
-      const response = await fetch("/api/orders")
-      if (response.ok) {
-        const data = await response.json()
-        setOrders(data.orders)
-      }
+      const ctx = new AudioContext()
+      const oscillator = ctx.createOscillator()
+      const gainNode = ctx.createGain()
+      
+      oscillator.type = "sine"
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime) // A5 note
+      oscillator.frequency.setValueAtTime(1100, ctx.currentTime + 0.1) // Higher pitch
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime + 0.2) // Back down
+      
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4)
+      
+      oscillator.connect(gainNode)
+      gainNode.connect(ctx.destination)
+      
+      oscillator.start(ctx.currentTime)
+      oscillator.stop(ctx.currentTime + 0.4)
     } catch (error) {
-      console.error("[v0] Error fetching orders:", error)
-    } finally {
-      setIsLoading(false)
+      console.error("[v0] Error playing notification:", error)
     }
   }, [])
 
-  // Initial fetch and SSE for real-time updates
+  // SSE for real-time state updates from centralized store
   useEffect(() => {
-    fetchOrders()
-    
-    // Connect to SSE for instant updates
     const eventSource = new EventSource("/api/orders/stream")
+    
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
-      if (data.type === "orders_updated") {
-        fetchOrders()
+      
+      if (data.type === "state_update" && data.state) {
+        const serverOrders: Order[] = data.state.orders
+        
+        setOrders((prevOrders) => {
+          const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
+          const prevActive = prevOrders.filter((o) => o.status === "pending" || o.status === "preparing")
+          const newActive = serverOrders.filter((o) => o.status === "pending" || o.status === "preparing")
+          
+          // Play sound for truly new orders
+          const newOrderIds = newActive.filter(o => !prevOrderMap.has(o.id))
+          if (newOrderIds.length > 0 && prevOrders.length > 0) {
+            playNotificationSound()
+          }
+          
+          return serverOrders
+        })
+        setIsLoading(false)
       }
     }
     
-    // Fallback polling every 5s in case SSE disconnects
-    const interval = setInterval(fetchOrders, 5000)
+    eventSource.onerror = () => {
+      // Reconnect on error - EventSource handles this automatically
+      setIsLoading(false)
+    }
     
     return () => {
       eventSource.close()
-      clearInterval(interval)
     }
-  }, [fetchOrders])
+  }, [playNotificationSound])
 
   // Update current time every second for timer calculations
   useEffect(() => {

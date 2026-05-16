@@ -1,31 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Order, OrderItem } from "@/lib/pizza-data"
-
-// SSE broadcast function
-const globalForSSE = globalThis as unknown as { 
-  clients: Set<ReadableStreamDefaultController>
-}
-function broadcastOrderUpdate() {
-  if (!globalForSSE.clients) return
-  const message = `data: {"type":"orders_updated"}\n\n`
-  globalForSSE.clients.forEach((controller) => {
-    try {
-      controller.enqueue(message)
-    } catch {
-      globalForSSE.clients.delete(controller)
-    }
-  })
-}
-
-// Use globalThis to persist orders across hot module reloads
-const globalForOrders = globalThis as unknown as { orders: Order[] }
-if (!globalForOrders.orders) {
-  globalForOrders.orders = []
-}
-const orders = globalForOrders.orders
+import { 
+  getOrders, 
+  addOrder, 
+  updateOrder, 
+  clearCompletedOrders, 
+  clearAllOrders 
+} from "@/lib/store"
 
 export async function GET() {
-  return NextResponse.json({ orders })
+  return NextResponse.json({ orders: getOrders() })
 }
 
 export async function POST(request: NextRequest) {
@@ -44,8 +28,7 @@ export async function POST(request: NextRequest) {
       tableNumber,
     }
 
-    orders.push(order)
-    broadcastOrderUpdate()
+    addOrder(order)
 
     return NextResponse.json({ order }, { status: 201 })
   } catch (error) {
@@ -62,13 +45,10 @@ export async function PATCH(request: NextRequest) {
       status: Order["status"]
     }
 
-    const order = orders.find((o) => o.id === orderId)
+    const order = updateOrder(orderId, { status })
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
-
-    order.status = status
-    broadcastOrderUpdate()
 
     return NextResponse.json({ order })
   } catch (error) {
@@ -82,18 +62,12 @@ export async function DELETE(request: NextRequest) {
   const action = searchParams.get("action")
 
   if (action === "clear-completed") {
-    for (let i = orders.length - 1; i >= 0; i--) {
-      if (orders[i].status === "completed") {
-        orders.splice(i, 1)
-      }
-    }
-    broadcastOrderUpdate()
+    clearCompletedOrders()
     return NextResponse.json({ success: true })
   }
 
   if (action === "clear-all") {
-    orders.splice(0, orders.length)
-    broadcastOrderUpdate()
+    clearAllOrders()
     return NextResponse.json({ success: true })
   }
 

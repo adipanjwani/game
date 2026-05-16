@@ -1,35 +1,34 @@
 import { NextResponse } from "next/server"
-
-// Store connected clients
-const globalForSSE = globalThis as unknown as { 
-  clients: Set<ReadableStreamDefaultController>
-}
-if (!globalForSSE.clients) {
-  globalForSSE.clients = new Set()
-}
+import { addClient, removeClient, sendStateToClient } from "@/lib/store"
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
+  let heartbeatInterval: NodeJS.Timeout | null = null
+  let controllerRef: ReadableStreamDefaultController | null = null
+  
   const stream = new ReadableStream({
     start(controller) {
-      globalForSSE.clients.add(controller)
+      controllerRef = controller
+      addClient(controller)
       
-      // Send initial connection message
-      controller.enqueue(`data: {"type":"connected"}\n\n`)
+      // Send current state immediately on connect
+      sendStateToClient(controller)
       
-      // Keep connection alive with heartbeat
-      const heartbeat = setInterval(() => {
+      // Keep connection alive with heartbeat every 25s
+      heartbeatInterval = setInterval(() => {
         try {
           controller.enqueue(`data: {"type":"heartbeat"}\n\n`)
         } catch {
-          clearInterval(heartbeat)
-          globalForSSE.clients.delete(controller)
+          if (heartbeatInterval) clearInterval(heartbeatInterval)
+          if (controllerRef) removeClient(controllerRef)
         }
-      }, 15000)
+      }, 25000)
     },
     cancel() {
-      // Client disconnected
+      // Client disconnected - clean up
+      if (heartbeatInterval) clearInterval(heartbeatInterval)
+      if (controllerRef) removeClient(controllerRef)
     }
   })
 
@@ -39,17 +38,5 @@ export async function GET() {
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
     },
-  })
-}
-
-// Function to broadcast updates to all connected clients
-export function broadcastOrderUpdate() {
-  const message = `data: {"type":"orders_updated"}\n\n`
-  globalForSSE.clients.forEach((controller) => {
-    try {
-      controller.enqueue(message)
-    } catch {
-      globalForSSE.clients.delete(controller)
-    }
   })
 }

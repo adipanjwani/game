@@ -49,52 +49,60 @@ export default function FrontPage() {
     return currentTime - orderTime > DELIVERY_TIME_LIMIT
   }
 
-  const fetchOrders = async () => {
-    const res = await fetch("/api/orders")
-    const data = await res.json()
-    const cooking = data.orders.filter(
+  // Process state update from centralized store
+  const processStateUpdate = (serverOrders: Order[]) => {
+    const cooking = serverOrders.filter(
       (o: Order) => o.status === "pending" || o.status === "preparing"
     )
+    
     setActiveOrders(cooking)
     
-    // Always rebuild placedOrders and orderTimes from server data
-    // This ensures all devices show the same state
+    // Update placedOrders from server state
     const newPlacedOrders: Record<string, string> = {}
-    const newOrderTimes: Record<string, number> = {}
-    
     cooking.forEach((order: Order) => {
       order.items.forEach((item) => {
         const itemId = item.pizza?.id || item.side?.id
         if (itemId) {
           newPlacedOrders[itemId] = order.id
-          newOrderTimes[itemId] = new Date(order.createdAt).getTime()
         }
       })
     })
-    
     setPlacedOrders(newPlacedOrders)
-    setOrderTimes(newOrderTimes)
+    
+    // Update orderTimes from server state (use server createdAt)
+    setOrderTimes((prev) => {
+      const newOrderTimes: Record<string, number> = {}
+      cooking.forEach((order: Order) => {
+        order.items.forEach((item) => {
+          const itemId = item.pizza?.id || item.side?.id
+          if (itemId) {
+            // Use server time for consistency across devices
+            newOrderTimes[itemId] = new Date(order.createdAt).getTime()
+          }
+        })
+      })
+      return newOrderTimes
+    })
   }
 
-  // Initial fetch and SSE for real-time updates
+  // SSE for real-time state updates from centralized store
   useEffect(() => {
-    fetchOrders()
-    
-    // Connect to SSE for instant updates
     const eventSource = new EventSource("/api/orders/stream")
+    
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
-      if (data.type === "orders_updated") {
-        fetchOrders()
+      
+      if (data.type === "state_update" && data.state) {
+        processStateUpdate(data.state.orders)
       }
     }
     
-    // Fallback polling every 5s in case SSE disconnects
-    const interval = setInterval(fetchOrders, 5000)
+    eventSource.onerror = () => {
+      // EventSource handles reconnection automatically
+    }
     
     return () => {
       eventSource.close()
-      clearInterval(interval)
     }
   }, [])
 
@@ -116,31 +124,26 @@ export default function FrontPage() {
     
     if (!item) return
 
+    // Optimistic update
+    setPlacedOrders((prev) => ({ ...prev, [id]: "pending" }))
+    setOrderTimes((prev) => ({ ...prev, [id]: Date.now() }))
+
     const orderItems = [{
       ...(type === "pizza" ? { pizza: item } : { side: item }),
       isFullPizza: type === "pizza" ? pizzaSizes[id] : false,
       quantity: quantities[id] || 1,
     }]
 
-    const res = await fetch("/api/orders", {
+    await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: orderItems }),
     })
-    
-    const data = await res.json()
-    if (data.order) {
-      setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
-      setOrderTimes((prev) => ({ ...prev, [id]: Date.now() }))
-    }
+    // SSE will sync the actual order ID
   }
 
   const handleDelivered = async (orderId: string, itemId: string) => {
-    await fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
+    // Optimistic update
     setPlacedOrders((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
@@ -151,14 +154,17 @@ export default function FrontPage() {
       delete updated[itemId]
       return updated
     })
+    
+    await fetch("/api/orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, status: "completed" }),
+    })
+    // SSE will confirm the update
   }
 
   const handleCancel = async (orderId: string, itemId: string) => {
-    await fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
+    // Optimistic update
     setPlacedOrders((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
@@ -169,6 +175,13 @@ export default function FrontPage() {
       delete updated[itemId]
       return updated
     })
+    
+    await fetch("/api/orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, status: "completed" }),
+    })
+    // SSE will confirm the update
   }
 
   const handleSirenStart = async () => {
