@@ -12,7 +12,7 @@ export default function KitchenPage() {
   const [sirenActive, setSirenActive] = useState(false)
   const [currentTime, setCurrentTime] = useState(Date.now())
   
-  const DELIVERY_TIME_LIMIT = 5 * 1000 // 5 seconds in milliseconds
+  const DELIVERY_TIME_LIMIT = 10 * 60 * 1000 // 10 minutes in milliseconds
   const audioContextRef = useRef<AudioContext | null>(null)
   const oscillatorRef = useRef<OscillatorNode | null>(null)
 
