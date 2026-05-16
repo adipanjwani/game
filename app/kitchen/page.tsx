@@ -2,37 +2,87 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Order } from "@/lib/pizza-data"
-import { Pizza, AlertTriangle, Monitor } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import { Pizza, AlertTriangle } from "lucide-react"
 
 export default function KitchenPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [sirenActive, setSirenActive] = useState(false)
   const [currentTime, setCurrentTime] = useState(Date.now())
+  const [newOrderIds, setNewOrderIds] = useState<Set<string>>(new Set())
+  const previousOrderIdsRef = useRef<Set<string>>(new Set())
   
   const DELIVERY_TIME_LIMIT = 10 * 60 * 1000 // 10 minutes in milliseconds
   const audioContextRef = useRef<AudioContext | null>(null)
-  const oscillatorRef = useRef<OscillatorNode | null>(null)
+  const buzzerIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const notificationAudioRef = useRef<AudioContext | null>(null)
+
+  // Play loud notification for new orders
+  const playNewOrderSound = useCallback(() => {
+    if (!notificationAudioRef.current) {
+      notificationAudioRef.current = new AudioContext()
+    }
+    const ctx = notificationAudioRef.current
+    
+    const playTone = (freq: number, startTime: number, duration: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = "sine"
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(1.0, startTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(startTime)
+      osc.stop(startTime + duration)
+    }
+    
+    const now = ctx.currentTime
+    // Loud ascending chime played twice
+    playTone(880, now, 0.15)
+    playTone(1100, now + 0.15, 0.15)
+    playTone(1320, now + 0.3, 0.3)
+    playTone(880, now + 0.7, 0.15)
+    playTone(1100, now + 0.85, 0.15)
+    playTone(1320, now + 1.0, 0.3)
+  }, [])
 
   const fetchOrders = useCallback(async () => {
     try {
       const response = await fetch("/api/orders")
       if (response.ok) {
         const data = await response.json()
-        setOrders(data.orders)
+        const newOrders: Order[] = data.orders || []
+        
+        // Check for new orders
+        const currentIds = new Set(newOrders.map((o: Order) => o.id))
+        const newIds: string[] = []
+        
+        currentIds.forEach((id) => {
+          if (!previousOrderIdsRef.current.has(id)) {
+            newIds.push(id)
+          }
+        })
+        
+        if (newIds.length > 0 && previousOrderIdsRef.current.size > 0) {
+          playNewOrderSound()
+          setNewOrderIds(new Set(newIds))
+          setTimeout(() => setNewOrderIds(new Set()), 2000)
+        }
+        
+        previousOrderIdsRef.current = currentIds
+        setOrders(newOrders)
       }
-    } catch (error) {
-      console.error("[v0] Error fetching orders:", error)
+    } catch {
+      // Silently ignore
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [playNewOrderSound])
 
   useEffect(() => {
     fetchOrders()
-    const interval = setInterval(fetchOrders, 2000)
+    const interval = setInterval(fetchOrders, 800) // Faster polling for kitchen
     return () => clearInterval(interval)
   }, [fetchOrders])
 
@@ -44,75 +94,72 @@ export default function KitchenPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Poll for siren status
+  // Poll for siren status - fast for responsiveness
   useEffect(() => {
+    let isMounted = true
     const checkSiren = async () => {
       try {
         const res = await fetch("/api/siren")
-        const data = await res.json()
-        setSirenActive(data.active)
-      } catch (error) {
-        console.error("[v0] Error checking siren:", error)
+        if (isMounted && res.ok) {
+          const data = await res.json()
+          setSirenActive(data.active)
+        }
+      } catch {
+        // Silently ignore
       }
     }
     checkSiren()
-    const interval = setInterval(checkSiren, 200)
-    return () => clearInterval(interval)
+    const interval = setInterval(checkSiren, 300) // Faster for responsiveness
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+    }
   }, [])
 
-  // Play siren sound when active
+  // Play buzzer beeping sound when Call Staff is active
   useEffect(() => {
-    if (sirenActive) {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext()
+    if (!sirenActive) {
+      if (buzzerIntervalRef.current) {
+        clearInterval(buzzerIntervalRef.current)
+        buzzerIntervalRef.current = null
       }
-      const ctx = audioContextRef.current
-      
-      if (!oscillatorRef.current) {
-        const oscillator = ctx.createOscillator()
-        const gainNode = ctx.createGain()
-        
-        oscillator.type = "sawtooth"
-        oscillator.frequency.value = 800
-        gainNode.gain.value = 1.0
-        
-        oscillator.connect(gainNode)
-        gainNode.connect(ctx.destination)
-        oscillator.start()
-        
-        const modulate = () => {
-          if (oscillatorRef.current) {
-            const time = ctx.currentTime
-            oscillatorRef.current.frequency.setValueAtTime(800, time)
-            oscillatorRef.current.frequency.linearRampToValueAtTime(1200, time + 0.5)
-            oscillatorRef.current.frequency.linearRampToValueAtTime(800, time + 1)
-          }
-        }
-        modulate()
-        const sirenInterval = setInterval(modulate, 1000)
-        
-        oscillatorRef.current = oscillator
-        ;(oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }).sirenInterval = sirenInterval
-      }
-    } else {
-      if (oscillatorRef.current) {
-        const osc = oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }
-        if (osc.sirenInterval) {
-          clearInterval(osc.sirenInterval)
-        }
-        oscillatorRef.current.stop()
-        oscillatorRef.current = null
-      }
+      return
+    }
+
+    // Create audio context once
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContext()
     }
     
+    const playBeep = () => {
+      const ctx = audioContextRef.current
+      if (!ctx) return
+      
+      try {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        
+        osc.type = "square"
+        osc.frequency.value = 800
+        gain.gain.setValueAtTime(1.0, ctx.currentTime)
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15)
+        
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.start()
+        osc.stop(ctx.currentTime + 0.15)
+      } catch (e) {
+        // Ignore audio errors
+      }
+    }
+
+    playBeep()
+    buzzerIntervalRef.current = setInterval(playBeep, 400)
+    
     return () => {
-      if (oscillatorRef.current) {
-        const osc = oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }
-        if (osc.sirenInterval) {
-          clearInterval(osc.sirenInterval)
-        }
-        oscillatorRef.current.stop()
-        oscillatorRef.current = null
+      if (buzzerIntervalRef.current) {
+        clearInterval(buzzerIntervalRef.current)
+        buzzerIntervalRef.current = null
       }
     }
   }, [sirenActive])
@@ -157,17 +204,9 @@ export default function KitchenPage() {
 
       {/* Header */}
       <header className="mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Pizza className="h-10 w-10 text-primary" />
-            <h1 className="text-4xl font-bold text-foreground">Kitchen Display</h1>
-          </div>
-          <Button asChild size="lg" className="h-12 px-6 text-lg font-semibold">
-            <Link href="/">
-              <Monitor className="h-5 w-5 mr-2" />
-              Front View
-            </Link>
-          </Button>
+        <div className="flex items-center gap-3">
+          <Pizza className="h-10 w-10 text-primary" />
+          <h1 className="text-4xl font-bold text-foreground">Kitchen Display</h1>
         </div>
       </header>
 
@@ -188,13 +227,16 @@ export default function KitchenPage() {
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-fr">
           {activeOrders.map((order) => {
             const overdue = isOverdue(order.createdAt)
+            const isNew = newOrderIds.has(order.id)
             return (
             <div
               key={order.id}
-              className={`border-4 rounded-2xl p-8 min-h-[250px] flex flex-col ${
+              className={`border-4 rounded-2xl p-8 min-h-[250px] flex flex-col transition-all ${
                 overdue 
-                  ? "bg-red-500/20 border-red-500 animate-pulse" 
-                  : "bg-card border-border"
+                  ? "bg-red-500/30 border-red-500 animate-pulse" 
+                  : isNew
+                    ? "bg-green-500/30 border-green-500 animate-pulse ring-4 ring-green-400"
+                    : "bg-card border-border"
               }`}
             >
               {/* Timer */}

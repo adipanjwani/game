@@ -1,11 +1,10 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import Link from "next/link"
+import { useState, useEffect } from "react"
 import { pizzas, sides, Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { ChefHat, Check, X, Plus, Minus } from "lucide-react"
+import { Plus, Minus } from "lucide-react"
 
 export default function FrontPage() {
   const [pizzaSizes, setPizzaSizes] = useState<Record<string, boolean>>(
@@ -20,26 +19,21 @@ export default function FrontPage() {
       [...pizzas, ...sides].map((item) => [item.id, defaults[item.id] || 1])
     )
   })
-  const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [placedOrders, setPlacedOrders] = useState<Record<string, string>>({})
   const [isCallingStaff, setIsCallingStaff] = useState(false)
-  
-  const buzzerContextRef = useRef<AudioContext | null>(null)
-  const buzzerIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const orderSoundRef = useRef<AudioContext | null>(null)
 
-  useEffect(() => {
-    const fetchOrders = async () => {
+  // Fast polling for real-time sync
+  const fetchOrders = useCallback(async () => {
+    try {
       const res = await fetch("/api/orders")
+      if (!res.ok) return
       const data = await res.json()
-      const cooking = data.orders.filter(
+      const activeOrders = (data.orders || []).filter(
         (o: Order) => o.status === "pending" || o.status === "preparing"
       )
-      setActiveOrders(cooking)
       
-      // Build a map of item IDs to order IDs from active orders
       const activeItemToOrder: Record<string, string> = {}
-      cooking.forEach((order: Order) => {
+      activeOrders.forEach((order: Order) => {
         order.items.forEach((item) => {
           const itemId = item.pizza?.id || item.side?.id
           if (itemId) {
@@ -48,13 +42,17 @@ export default function FrontPage() {
         })
       })
       
-      // Update placedOrders to match active orders
       setPlacedOrders(activeItemToOrder)
+    } catch {
+      // Ignore errors for fast recovery
     }
-    fetchOrders()
-    const interval = setInterval(fetchOrders, 2000)
-    return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    fetchOrders()
+    const interval = setInterval(fetchOrders, 1000) // Faster sync
+    return () => clearInterval(interval)
+  }, [fetchOrders])
 
   const handleToggleSize = (pizzaId: string) => {
     setPizzaSizes((prev) => ({ ...prev, [pizzaId]: !prev[pizzaId] }))
@@ -67,61 +65,18 @@ export default function FrontPage() {
     }))
   }
 
-  const playOrderSound = () => {
-    if (!orderSoundRef.current) {
-      orderSoundRef.current = new AudioContext()
-    }
-    const ctx = orderSoundRef.current
+  const handleOrder = (type: "pizza" | "side", id: string) => {
+    // Prevent double-clicks - check if already ordered
+    if (placedOrders[id]) return
     
-    const playTone = (freq: number, startTime: number, duration: number) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = "sine"
-      osc.frequency.value = freq
-      gain.gain.setValueAtTime(1.0, startTime)
-      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start(startTime)
-      osc.stop(startTime + duration)
-    }
-    
-    const now = ctx.currentTime
-    playTone(523, now, 0.1)        // C5
-    playTone(659, now + 0.1, 0.1)  // E5
-    playTone(784, now + 0.2, 0.2)  // G5
-  }
-
-  const playCancelSound = () => {
-    if (!orderSoundRef.current) {
-      orderSoundRef.current = new AudioContext()
-    }
-    const ctx = orderSoundRef.current
-    
-    const playTone = (freq: number, startTime: number, duration: number) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = "sine"
-      osc.frequency.value = freq
-      gain.gain.setValueAtTime(1.0, startTime)
-      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start(startTime)
-      osc.stop(startTime + duration)
-    }
-    
-    const now = ctx.currentTime
-    playTone(400, now, 0.15)       // Descending tone
-    playTone(300, now + 0.15, 0.2) // Lower tone
-  }
-
-  const handleOrder = async (type: "pizza" | "side", id: string) => {
     const item = type === "pizza" 
       ? pizzas.find((p) => p.id === id)
       : sides.find((s) => s.id === id)
     
     if (!item) return
+
+    // Optimistic UI update - show as ordered immediately
+    setPlacedOrders((prev) => ({ ...prev, [id]: "pending" }))
 
     const orderItems = [{
       ...(type === "pizza" ? { pizza: item } : { side: item }),
@@ -129,91 +84,67 @@ export default function FrontPage() {
       quantity: quantities[id] || 1,
     }]
 
-    const res = await fetch("/api/orders", {
+    // Fire and forget - don't block UI
+    fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: orderItems }),
+    }).then(res => res.json()).then(data => {
+      if (data.order) {
+        setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
+      }
+    }).catch(() => {
+      // Revert on error
+      setPlacedOrders((prev) => {
+        const updated = { ...prev }
+        delete updated[id]
+        return updated
+      })
     })
-    
-    const data = await res.json()
-    if (data.order) {
-      playOrderSound()
-      setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
-    }
   }
 
-  const handleDelivered = async (orderId: string, itemId: string) => {
-    await fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
+  const handleDelivered = (orderId: string, itemId: string) => {
+    // Optimistic UI - remove immediately
     setPlacedOrders((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
       return updated
     })
-  }
-
-  const handleCancel = async (orderId: string, itemId: string) => {
-    playCancelSound()
-    await fetch("/api/orders", {
+    // Fire and forget
+    fetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId, status: "completed" }),
     })
+  }
+
+  const handleCancel = (orderId: string, itemId: string) => {
+    // Optimistic UI - remove immediately
     setPlacedOrders((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
       return updated
     })
+    // Fire and forget
+    fetch("/api/orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, status: "completed" }),
+    })
   }
 
-  const playBeep = () => {
-    if (!buzzerContextRef.current) {
-      buzzerContextRef.current = new AudioContext()
-    }
-    const ctx = buzzerContextRef.current
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    
-    osc.type = "square"
-    osc.frequency.value = 800
-    gain.gain.setValueAtTime(1.0, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15)
-    
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start()
-    osc.stop(ctx.currentTime + 0.15)
-  }
-
-  const startBuzzer = () => {
-    playBeep()
-    buzzerIntervalRef.current = setInterval(playBeep, 300)
-  }
-
-  const stopBuzzer = () => {
-    if (buzzerIntervalRef.current) {
-      clearInterval(buzzerIntervalRef.current)
-      buzzerIntervalRef.current = null
-    }
-  }
-
-  const handleSirenStart = async () => {
+  const handleSirenStart = () => {
     setIsCallingStaff(true)
-    startBuzzer()
-    await fetch("/api/siren", {
+    fetch("/api/siren", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: true }),
     })
   }
 
-  const handleSirenStop = async () => {
+  const handleSirenStop = () => {
     setIsCallingStaff(false)
-    stopBuzzer()
-    await fetch("/api/siren", {
+    fetch("/api/siren", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: false }),
@@ -226,17 +157,11 @@ export default function FrontPage() {
   ]
 
   return (
-    <div className="h-screen bg-background p-6 flex gap-6">
+    <div className="h-screen bg-background p-6">
       {/* Menu Panel */}
       <div className="flex-1 flex flex-col min-h-0">
-        <header className="flex items-center justify-between mb-4">
+        <header className="mb-4">
           <h1 className="text-3xl font-bold text-foreground">Menu</h1>
-          <Link href="/kitchen">
-            <Button variant="outline" size="lg" className="gap-3 text-lg px-6">
-              <ChefHat className="h-6 w-6" />
-              Kitchen
-            </Button>
-          </Link>
         </header>
 
         <div className="grid grid-cols-2 gap-4 content-start overflow-y-auto">
@@ -248,39 +173,39 @@ export default function FrontPage() {
             const qty = quantities[item.id] || 1
             
             return (
-              <div key={item.id} className="flex items-center bg-card border border-border rounded-xl p-3">
+              <div key={item.id} className="flex items-center bg-card border-2 border-border rounded-xl p-4 min-h-[72px] touch-manipulation">
                 {/* Left: Name */}
-                <span className="text-base font-bold text-foreground whitespace-nowrap w-32">{item.name}</span>
+                <span className="text-xl font-bold text-foreground whitespace-nowrap w-40">{item.name}</span>
 
                 {/* Center: Quantity + Toggle */}
-                <div className="flex-1 flex items-center justify-center gap-4">
+                <div className="flex-1 flex items-center justify-center gap-6">
                   {/* Quantity Controls */}
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
-                      size="sm"
-                      className="h-10 w-10 p-0"
+                      size="lg"
+                      className="h-14 w-14 p-0 text-2xl touch-manipulation"
                       onClick={() => handleQuantityChange(item.id, -1)}
                       disabled={isOrdered}
                     >
-                      <Minus className="h-4 w-4" />
+                      <Minus className="h-6 w-6" />
                     </Button>
-                    <span className="w-8 text-center font-bold text-lg">{qty}</span>
+                    <span className="w-12 text-center font-bold text-2xl">{qty}</span>
                     <Button
                       variant="outline"
-                      size="sm"
-                      className="h-10 w-10 p-0"
+                      size="lg"
+                      className="h-14 w-14 p-0 text-2xl touch-manipulation"
                       onClick={() => handleQuantityChange(item.id, 1)}
                       disabled={isOrdered}
                     >
-                      <Plus className="h-4 w-4" />
+                      <Plus className="h-6 w-6" />
                     </Button>
                   </div>
                   
                   {isPizza && !('noSizeToggle' in item && item.noSizeToggle) && (
-                    <div className="flex items-center gap-2 select-none">
+                    <div className="flex items-center gap-3 select-none">
                       <span 
-                        className={`text-sm font-semibold cursor-pointer ${!isFullPizza ? "text-primary" : "text-muted-foreground"}`}
+                        className={`text-lg font-bold cursor-pointer px-3 py-2 rounded-lg touch-manipulation ${!isFullPizza ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
                         onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: false }))}
                       >
                         Half
@@ -288,9 +213,10 @@ export default function FrontPage() {
                       <Switch
                         checked={isFullPizza}
                         onCheckedChange={(checked) => setPizzaSizes((prev) => ({ ...prev, [item.id]: checked }))}
+                        className="scale-150"
                       />
                       <span 
-                        className={`text-sm font-semibold cursor-pointer ${isFullPizza ? "text-primary" : "text-muted-foreground"}`}
+                        className={`text-lg font-bold cursor-pointer px-3 py-2 rounded-lg touch-manipulation ${isFullPizza ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
                         onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: true }))}
                       >
                         Full
@@ -300,11 +226,11 @@ export default function FrontPage() {
                 </div>
 
                 {/* Right: Buttons */}
-                <div className="flex gap-2 w-60">
+                <div className="flex gap-3 w-72">
                   {!isOrdered ? (
                     <Button
                       size="lg"
-                      className="h-10 flex-1 text-base font-bold"
+                      className="h-14 flex-1 text-xl font-bold touch-manipulation active:scale-95 transition-transform"
                       onClick={() => handleOrder(item.type, item.id)}
                     >
                       Order
@@ -314,7 +240,7 @@ export default function FrontPage() {
                       <Button
                         size="lg"
                         variant="default"
-                        className="bg-green-600 hover:bg-green-700 h-10 flex-1 text-base font-bold"
+                        className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-14 flex-1 text-lg font-bold touch-manipulation active:scale-95 transition-transform"
                         onClick={() => handleDelivered(orderId, item.id)}
                       >
                         Delivered
@@ -322,7 +248,7 @@ export default function FrontPage() {
                       <Button
                         size="lg"
                         variant="destructive"
-                        className="h-10 flex-1 text-base font-bold"
+                        className="h-14 flex-1 text-lg font-bold touch-manipulation active:scale-95 transition-transform"
                         onClick={() => handleCancel(orderId, item.id)}
                       >
                         Cancel
@@ -336,14 +262,14 @@ export default function FrontPage() {
         </div>
 
         {/* Call Staff Button - Hold to activate siren */}
-        <div className="flex justify-center mt-4">
+        <div className="flex justify-center mt-6">
           <Button
             size="lg"
             variant="destructive"
-            className={`h-24 px-40 text-3xl font-bold select-none transition-all duration-150 ${
+            className={`h-20 px-24 text-2xl font-bold select-none touch-manipulation transition-all duration-100 ${
               isCallingStaff 
                 ? "bg-red-800 scale-95 ring-4 ring-red-400 animate-pulse" 
-                : "bg-red-600 hover:bg-red-700"
+                : "bg-red-600 hover:bg-red-700 active:bg-red-800"
             }`}
             onMouseDown={handleSirenStart}
             onMouseUp={handleSirenStop}
@@ -351,58 +277,11 @@ export default function FrontPage() {
             onTouchStart={handleSirenStart}
             onTouchEnd={handleSirenStop}
           >
-            {isCallingStaff ? "Calling Staff..." : "Hold to Call Staff"}
+            {isCallingStaff ? "CALLING STAFF..." : "HOLD TO CALL STAFF"}
           </Button>
         </div>
       </div>
 
-      {/* Cooking Panel */}
-      <div className="w-80 bg-card border border-border rounded-xl p-4 flex flex-col">
-        <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-3">
-          <ChefHat className="h-7 w-7 text-primary" />
-          Now Cooking
-        </h2>
-        <div className="flex-1 overflow-y-auto space-y-3">
-          {activeOrders.length === 0 ? (
-            <p className="text-muted-foreground text-lg text-center py-8">
-              No orders cooking
-            </p>
-          ) : (
-            activeOrders.map((order) => (
-              <div
-                key={order.id}
-                className="bg-muted/50 rounded-lg p-4 border border-border"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-muted-foreground font-medium">
-                    #{order.id.slice(-4)}
-                  </span>
-                  <span
-                    className={`text-sm px-3 py-1 rounded-full font-semibold ${
-                      order.status === "preparing"
-                        ? "bg-primary/20 text-primary"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {order.status === "preparing" ? "Cooking" : "Queued"}
-                  </span>
-                </div>
-                {order.items.map((item, idx) => (
-                  <div key={idx} className="text-lg font-semibold text-foreground">
-                    {item.pizza ? (
-                      <span>
-                        {item.quantity > 1 && `${item.quantity}x `}{item.pizza.name} ({item.isFullPizza ? "Full" : "Half"})
-                      </span>
-                    ) : item.side ? (
-                      <span>{item.quantity > 1 && `${item.quantity}x `}{item.side.name}</span>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
     </div>
   )
 }
