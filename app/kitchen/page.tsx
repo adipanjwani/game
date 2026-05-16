@@ -30,10 +30,26 @@ export default function KitchenPage() {
     }
   }, [])
 
+  // Initial fetch and SSE for real-time updates
   useEffect(() => {
     fetchOrders()
-    const interval = setInterval(fetchOrders, 2000)
-    return () => clearInterval(interval)
+    
+    // Connect to SSE for instant updates
+    const eventSource = new EventSource("/api/orders/stream")
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      if (data.type === "orders_updated") {
+        fetchOrders()
+      }
+    }
+    
+    // Fallback polling every 5s in case SSE disconnects
+    const interval = setInterval(fetchOrders, 5000)
+    
+    return () => {
+      eventSource.close()
+      clearInterval(interval)
+    }
   }, [fetchOrders])
 
   // Update current time every second for timer calculations

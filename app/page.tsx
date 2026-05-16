@@ -24,29 +24,46 @@ export default function FrontPage() {
   const [placedOrders, setPlacedOrders] = useState<Record<string, string>>({})
   const [isCallingStaff, setIsCallingStaff] = useState(false)
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      const res = await fetch("/api/orders")
-      const data = await res.json()
-      const cooking = data.orders.filter(
-        (o: Order) => o.status === "pending" || o.status === "preparing"
-      )
-      setActiveOrders(cooking)
-      
-      setPlacedOrders((prev) => {
-        const activeOrderIds = new Set(cooking.map((o: Order) => o.id))
-        const updated: Record<string, string> = {}
-        for (const [itemId, orderId] of Object.entries(prev)) {
-          if (activeOrderIds.has(orderId)) {
-            updated[itemId] = orderId
-          }
+  const fetchOrders = async () => {
+    const res = await fetch("/api/orders")
+    const data = await res.json()
+    const cooking = data.orders.filter(
+      (o: Order) => o.status === "pending" || o.status === "preparing"
+    )
+    setActiveOrders(cooking)
+    
+    setPlacedOrders((prev) => {
+      const activeOrderIds = new Set(cooking.map((o: Order) => o.id))
+      const updated: Record<string, string> = {}
+      for (const [itemId, orderId] of Object.entries(prev)) {
+        if (activeOrderIds.has(orderId)) {
+          updated[itemId] = orderId
         }
-        return updated
-      })
-    }
+      }
+      return updated
+    })
+  }
+
+  // Initial fetch and SSE for real-time updates
+  useEffect(() => {
     fetchOrders()
-    const interval = setInterval(fetchOrders, 2000)
-    return () => clearInterval(interval)
+    
+    // Connect to SSE for instant updates
+    const eventSource = new EventSource("/api/orders/stream")
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      if (data.type === "orders_updated") {
+        fetchOrders()
+      }
+    }
+    
+    // Fallback polling every 5s in case SSE disconnects
+    const interval = setInterval(fetchOrders, 5000)
+    
+    return () => {
+      eventSource.close()
+      clearInterval(interval)
+    }
   }, [])
 
   const handleToggleSize = (pizzaId: string) => {

@@ -1,9 +1,28 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Order, OrderItem } from "@/lib/pizza-data"
 
-// In-memory store for orders (resets on server restart)
-// For production, use a database
-let orders: Order[] = []
+// SSE broadcast function
+const globalForSSE = globalThis as unknown as { 
+  clients: Set<ReadableStreamDefaultController>
+}
+function broadcastOrderUpdate() {
+  if (!globalForSSE.clients) return
+  const message = `data: {"type":"orders_updated"}\n\n`
+  globalForSSE.clients.forEach((controller) => {
+    try {
+      controller.enqueue(message)
+    } catch {
+      globalForSSE.clients.delete(controller)
+    }
+  })
+}
+
+// Use globalThis to persist orders across hot module reloads
+const globalForOrders = globalThis as unknown as { orders: Order[] }
+if (!globalForOrders.orders) {
+  globalForOrders.orders = []
+}
+const orders = globalForOrders.orders
 
 export async function GET() {
   return NextResponse.json({ orders })
@@ -26,6 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     orders.push(order)
+    broadcastOrderUpdate()
 
     return NextResponse.json({ order }, { status: 201 })
   } catch (error) {
@@ -48,6 +68,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     order.status = status
+    broadcastOrderUpdate()
 
     return NextResponse.json({ order })
   } catch (error) {
