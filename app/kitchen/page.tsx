@@ -12,7 +12,7 @@ export default function KitchenPage() {
   
   const DELIVERY_TIME_LIMIT = 10 * 60 * 1000 // 10 minutes in milliseconds
   const audioContextRef = useRef<AudioContext | null>(null)
-  const oscillatorRef = useRef<OscillatorNode | null>(null)
+  const buzzerIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -58,59 +58,41 @@ export default function KitchenPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Play siren sound when active
+  // Play buzzer beeping sound when Call Staff is active
   useEffect(() => {
-    if (sirenActive) {
+    const playBeep = () => {
       if (!audioContextRef.current) {
         audioContextRef.current = new AudioContext()
       }
       const ctx = audioContextRef.current
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
       
-      if (!oscillatorRef.current) {
-        const oscillator = ctx.createOscillator()
-        const gainNode = ctx.createGain()
-        
-        oscillator.type = "sawtooth"
-        oscillator.frequency.value = 800
-        gainNode.gain.value = 1.0
-        
-        oscillator.connect(gainNode)
-        gainNode.connect(ctx.destination)
-        oscillator.start()
-        
-        const modulate = () => {
-          if (oscillatorRef.current) {
-            const time = ctx.currentTime
-            oscillatorRef.current.frequency.setValueAtTime(800, time)
-            oscillatorRef.current.frequency.linearRampToValueAtTime(1200, time + 0.5)
-            oscillatorRef.current.frequency.linearRampToValueAtTime(800, time + 1)
-          }
-        }
-        modulate()
-        const sirenInterval = setInterval(modulate, 1000)
-        
-        oscillatorRef.current = oscillator
-        ;(oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }).sirenInterval = sirenInterval
-      }
+      osc.type = "square"
+      osc.frequency.value = 800
+      gain.gain.setValueAtTime(1.0, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15)
+      
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.15)
+    }
+
+    if (sirenActive) {
+      playBeep()
+      buzzerIntervalRef.current = setInterval(playBeep, 300)
     } else {
-      if (oscillatorRef.current) {
-        const osc = oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }
-        if (osc.sirenInterval) {
-          clearInterval(osc.sirenInterval)
-        }
-        oscillatorRef.current.stop()
-        oscillatorRef.current = null
+      if (buzzerIntervalRef.current) {
+        clearInterval(buzzerIntervalRef.current)
+        buzzerIntervalRef.current = null
       }
     }
     
     return () => {
-      if (oscillatorRef.current) {
-        const osc = oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }
-        if (osc.sirenInterval) {
-          clearInterval(osc.sirenInterval)
-        }
-        oscillatorRef.current.stop()
-        oscillatorRef.current = null
+      if (buzzerIntervalRef.current) {
+        clearInterval(buzzerIntervalRef.current)
+        buzzerIntervalRef.current = null
       }
     }
   }, [sirenActive])
