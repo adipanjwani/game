@@ -1,15 +1,23 @@
 import { NextRequest, NextResponse } from "next/server"
+import { broadcastSiren } from "@/lib/store"
 
-// In-memory state for siren
-let sirenActive = false
-let sirenLastUpdate = Date.now()
+// Use globalThis to persist siren state across hot reloads
+const globalForSiren = globalThis as unknown as { 
+  sirenActive: boolean
+  sirenLastUpdate: number 
+}
+if (globalForSiren.sirenActive === undefined) {
+  globalForSiren.sirenActive = false
+  globalForSiren.sirenLastUpdate = Date.now()
+}
 
 export async function GET() {
   // Auto-deactivate siren if no update in 500ms (button released or disconnected)
-  if (sirenActive && Date.now() - sirenLastUpdate > 500) {
-    sirenActive = false
+  if (globalForSiren.sirenActive && Date.now() - globalForSiren.sirenLastUpdate > 500) {
+    globalForSiren.sirenActive = false
+    broadcastSiren(false)
   }
-  return NextResponse.json({ active: sirenActive })
+  return NextResponse.json({ active: globalForSiren.sirenActive })
 }
 
 export async function POST(request: NextRequest) {
@@ -17,10 +25,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { active } = body as { active: boolean }
     
-    sirenActive = active
-    sirenLastUpdate = Date.now()
+    globalForSiren.sirenActive = active
+    globalForSiren.sirenLastUpdate = Date.now()
     
-    return NextResponse.json({ active: sirenActive })
+    // Broadcast siren state to all connected clients via SSE
+    broadcastSiren(active)
+    
+    return NextResponse.json({ active: globalForSiren.sirenActive })
   } catch (error) {
     console.error("[v0] Error updating siren:", error)
     return NextResponse.json({ error: "Failed to update siren" }, { status: 500 })

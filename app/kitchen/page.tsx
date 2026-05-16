@@ -85,6 +85,11 @@ export default function KitchenPage() {
         })
         setIsLoading(false)
       }
+      
+      // Handle siren updates via SSE
+      if (data.type === "siren_update") {
+        setSirenActive(data.active)
+      }
     }
     
     eventSource.onerror = () => {
@@ -105,21 +110,7 @@ export default function KitchenPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Poll for siren status
-  useEffect(() => {
-    const checkSiren = async () => {
-      try {
-        const res = await fetch("/api/siren")
-        const data = await res.json()
-        setSirenActive(data.active)
-      } catch (error) {
-        console.error("[v0] Error checking siren:", error)
-      }
-    }
-    checkSiren()
-    const interval = setInterval(checkSiren, 200)
-    return () => clearInterval(interval)
-  }, [])
+
 
   // Play siren sound when active
   useEffect(() => {
