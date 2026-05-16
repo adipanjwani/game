@@ -1,11 +1,10 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import Link from "next/link"
 import { pizzas, sides, Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { ChefHat, Check, X, Plus, Minus } from "lucide-react"
+import { Check, X, Plus, Minus } from "lucide-react"
 
 export default function FrontPage() {
   const [pizzaSizes, setPizzaSizes] = useState<Record<string, boolean>>(
@@ -20,7 +19,6 @@ export default function FrontPage() {
       [...pizzas, ...sides].map((item) => [item.id, defaults[item.id] || 1])
     )
   })
-  const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [placedOrders, setPlacedOrders] = useState<Record<string, string>>({})
   const [isCallingStaff, setIsCallingStaff] = useState(false)
   
@@ -32,14 +30,13 @@ export default function FrontPage() {
     const fetchOrders = async () => {
       const res = await fetch("/api/orders")
       const data = await res.json()
-      const cooking = data.orders.filter(
+      const activeOrders = data.orders.filter(
         (o: Order) => o.status === "pending" || o.status === "preparing"
       )
-      setActiveOrders(cooking)
       
       // Build a map of item IDs to order IDs from active orders
       const activeItemToOrder: Record<string, string> = {}
-      cooking.forEach((order: Order) => {
+      activeOrders.forEach((order: Order) => {
         order.items.forEach((item) => {
           const itemId = item.pizza?.id || item.side?.id
           if (itemId) {
@@ -226,17 +223,11 @@ export default function FrontPage() {
   ]
 
   return (
-    <div className="h-screen bg-background p-6 flex gap-6">
+    <div className="h-screen bg-background p-6">
       {/* Menu Panel */}
       <div className="flex-1 flex flex-col min-h-0">
-        <header className="flex items-center justify-between mb-4">
+        <header className="mb-4">
           <h1 className="text-3xl font-bold text-foreground">Menu</h1>
-          <Link href="/kitchen">
-            <Button variant="outline" size="lg" className="gap-3 text-lg px-6">
-              <ChefHat className="h-6 w-6" />
-              Kitchen
-            </Button>
-          </Link>
         </header>
 
         <div className="grid grid-cols-2 gap-4 content-start overflow-y-auto">
@@ -356,53 +347,6 @@ export default function FrontPage() {
         </div>
       </div>
 
-      {/* Cooking Panel */}
-      <div className="w-80 bg-card border border-border rounded-xl p-4 flex flex-col">
-        <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-3">
-          <ChefHat className="h-7 w-7 text-primary" />
-          Now Cooking
-        </h2>
-        <div className="flex-1 overflow-y-auto space-y-3">
-          {activeOrders.length === 0 ? (
-            <p className="text-muted-foreground text-lg text-center py-8">
-              No orders cooking
-            </p>
-          ) : (
-            activeOrders.map((order) => (
-              <div
-                key={order.id}
-                className="bg-muted/50 rounded-lg p-4 border border-border"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-muted-foreground font-medium">
-                    #{order.id.slice(-4)}
-                  </span>
-                  <span
-                    className={`text-sm px-3 py-1 rounded-full font-semibold ${
-                      order.status === "preparing"
-                        ? "bg-primary/20 text-primary"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {order.status === "preparing" ? "Cooking" : "Queued"}
-                  </span>
-                </div>
-                {order.items.map((item, idx) => (
-                  <div key={idx} className="text-lg font-semibold text-foreground">
-                    {item.pizza ? (
-                      <span>
-                        {item.quantity > 1 && `${item.quantity}x `}{item.pizza.name} ({item.isFullPizza ? "Full" : "Half"})
-                      </span>
-                    ) : item.side ? (
-                      <span>{item.quantity > 1 && `${item.quantity}x `}{item.side.name}</span>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
     </div>
   )
 }

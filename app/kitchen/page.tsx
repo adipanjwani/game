@@ -2,9 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Order } from "@/lib/pizza-data"
-import { Pizza, AlertTriangle, Monitor } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import { Pizza, AlertTriangle } from "lucide-react"
 
 export default function KitchenPage() {
   const [orders, setOrders] = useState<Order[]>([])
@@ -157,17 +155,9 @@ export default function KitchenPage() {
 
       {/* Header */}
       <header className="mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Pizza className="h-10 w-10 text-primary" />
-            <h1 className="text-4xl font-bold text-foreground">Kitchen Display</h1>
-          </div>
-          <Button asChild size="lg" className="h-12 px-6 text-lg font-semibold">
-            <Link href="/">
-              <Monitor className="h-5 w-5 mr-2" />
-              Front View
-            </Link>
-          </Button>
+        <div className="flex items-center gap-3">
+          <Pizza className="h-10 w-10 text-primary" />
+          <h1 className="text-4xl font-bold text-foreground">Kitchen Display</h1>
         </div>
       </header>
 
