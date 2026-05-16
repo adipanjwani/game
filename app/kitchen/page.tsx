@@ -19,57 +19,68 @@ export default function KitchenPage() {
   const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const [audioEnabled, setAudioEnabled] = useState(false)
   
+  // Helper to get or create AudioContext synchronously (must be called in user gesture)
+  const getOrCreateAudioContext = useCallback(() => {
+    if (!audioContextRef.current) {
+      // Use webkitAudioContext for older Safari/iOS
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      audioContextRef.current = new AudioCtx()
+    }
+    // Resume must be called synchronously in user gesture for iOS
+    if (audioContextRef.current.state === "suspended") {
+      audioContextRef.current.resume()
+    }
+    return audioContextRef.current
+  }, [])
+  
   // Initialize AudioContext on any user interaction with the page
+  // MUST be synchronous for iOS Safari - no async/await
   useEffect(() => {
-    const initAudio = async () => {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext()
-      }
-      if (audioContextRef.current.state === "suspended") {
-        await audioContextRef.current.resume()
-      }
-      if (audioContextRef.current.state === "running" && !audioEnabled) {
+    const initAudio = () => {
+      const ctx = getOrCreateAudioContext()
+      if (ctx.state === "running" && !audioEnabled) {
         setAudioEnabled(true)
       }
     }
     
-    document.addEventListener("click", initAudio)
-    document.addEventListener("touchstart", initAudio)
+    document.addEventListener("click", initAudio, { once: false })
+    document.addEventListener("touchstart", initAudio, { once: false })
+    document.addEventListener("touchend", initAudio, { once: false })
     
     return () => {
       document.removeEventListener("click", initAudio)
       document.removeEventListener("touchstart", initAudio)
+      document.removeEventListener("touchend", initAudio)
     }
-  }, [audioEnabled])
+  }, [audioEnabled, getOrCreateAudioContext])
   
-  // Explicit enable audio with a test beep
-  const enableAudio = useCallback(async () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext()
-    }
-    if (audioContextRef.current.state === "suspended") {
-      await audioContextRef.current.resume()
-    }
-    // Play a test beep to confirm
-    const ctx = audioContextRef.current
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = "sine"
-    osc.frequency.value = 440
-    gain.gain.setValueAtTime(0.2, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2)
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start()
-    osc.stop(ctx.currentTime + 0.2)
+  // Explicit enable audio button handler - plays a test beep
+  const enableAudio = useCallback(() => {
+    const ctx = getOrCreateAudioContext()
+    // Play a short test beep to confirm audio works on this device
+    try {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = "sine"
+      osc.frequency.value = 440
+      gain.gain.setValueAtTime(0.3, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.3)
+    } catch {}
     setAudioEnabled(true)
-  }, [])
+  }, [getOrCreateAudioContext])
   
   // Play notification sound for new orders
   const playNotificationSound = useCallback(() => {
     if (!audioContextRef.current || audioContextRef.current.state !== "running") return
     try {
       const ctx = audioContextRef.current
+      // Resume in case it got suspended
+      if (ctx.state === "suspended") ctx.resume()
+      
       const oscillator = ctx.createOscillator()
       const gainNode = ctx.createGain()
       
@@ -162,8 +173,11 @@ export default function KitchenPage() {
   // Play siren sound when active
   useEffect(() => {
     if (sirenActive) {
-      if (!audioContextRef.current || audioContextRef.current.state !== "running") return
+      if (!audioContextRef.current) return
       const ctx = audioContextRef.current
+      // Resume in case suspended (e.g. iOS background)
+      if (ctx.state === "suspended") ctx.resume()
+      if (ctx.state !== "running") return
       
       if (!oscillatorRef.current) {
         const oscillator = ctx.createOscillator()
