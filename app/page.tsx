@@ -135,20 +135,20 @@ export default function FrontPage() {
   ]
 
   return (
-    <div className="h-screen bg-background p-6 flex gap-6">
+    <div className="h-screen bg-background p-4 flex gap-4 overflow-hidden">
       {/* Menu Panel */}
-      <div className="flex-1 flex flex-col min-h-0">
-        <header className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-bold text-foreground">Menu</h1>
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <header className="flex items-center justify-between mb-3 shrink-0">
+          <h1 className="text-2xl font-bold text-foreground">Menu</h1>
           <Link href="/kitchen">
-            <Button variant="outline" size="lg" className="gap-3 text-lg px-6">
-              <ChefHat className="h-6 w-6" />
+            <Button variant="outline" size="default" className="gap-2">
+              <ChefHat className="h-5 w-5" />
               Kitchen
             </Button>
           </Link>
         </header>
 
-        <div className="grid grid-cols-2 gap-4 content-start overflow-y-auto">
+        <div className="flex-1 grid grid-cols-2 gap-2 auto-rows-fr overflow-hidden">
           {allItems.map((item) => {
             const isPizza = item.type === "pizza"
             const isFullPizza = isPizza ? pizzaSizes[item.id] : false
@@ -157,39 +157,39 @@ export default function FrontPage() {
             const qty = quantities[item.id] || 1
             
             return (
-              <div key={item.id} className="flex items-center bg-card border border-border rounded-xl p-3">
+              <div key={item.id} className="flex items-center bg-card border border-border rounded-lg px-3 py-2 min-h-0">
                 {/* Left: Name */}
-                <span className="text-base font-bold text-foreground whitespace-nowrap w-32">{item.name}</span>
+                <span className="text-sm font-bold text-foreground whitespace-nowrap w-24 shrink-0">{item.name}</span>
 
                 {/* Center: Quantity + Toggle */}
-                <div className="flex-1 flex items-center justify-center gap-4">
+                <div className="flex-1 flex items-center justify-center gap-3">
                   {/* Quantity Controls */}
                   <div className="flex items-center gap-1">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-10 w-10 p-0"
+                      className="h-8 w-8 p-0"
                       onClick={() => handleQuantityChange(item.id, -1)}
                       disabled={isOrdered}
                     >
-                      <Minus className="h-4 w-4" />
+                      <Minus className="h-3 w-3" />
                     </Button>
-                    <span className="w-8 text-center font-bold text-lg">{qty}</span>
+                    <span className="w-6 text-center font-bold text-sm">{qty}</span>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-10 w-10 p-0"
+                      className="h-8 w-8 p-0"
                       onClick={() => handleQuantityChange(item.id, 1)}
                       disabled={isOrdered}
                     >
-                      <Plus className="h-4 w-4" />
+                      <Plus className="h-3 w-3" />
                     </Button>
                   </div>
                   
                   {isPizza && !('noSizeToggle' in item && item.noSizeToggle) && (
-                    <div className="flex items-center gap-2 select-none">
+                    <div className="flex items-center gap-1 select-none">
                       <span 
-                        className={`text-sm font-semibold cursor-pointer ${!isFullPizza ? "text-primary" : "text-muted-foreground"}`}
+                        className={`text-xs font-semibold cursor-pointer px-1 ${!isFullPizza ? "text-primary" : "text-muted-foreground"}`}
                         onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: false }))}
                       >
                         Half
@@ -199,7 +199,7 @@ export default function FrontPage() {
                         onCheckedChange={(checked) => setPizzaSizes((prev) => ({ ...prev, [item.id]: checked }))}
                       />
                       <span 
-                        className={`text-sm font-semibold cursor-pointer ${isFullPizza ? "text-primary" : "text-muted-foreground"}`}
+                        className={`text-xs font-semibold cursor-pointer px-1 ${isFullPizza ? "text-primary" : "text-muted-foreground"}`}
                         onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: true }))}
                       >
                         Full
@@ -209,11 +209,11 @@ export default function FrontPage() {
                 </div>
 
                 {/* Right: Buttons */}
-                <div className="flex gap-2 w-60">
+                <div className="flex gap-1 w-44 shrink-0">
                   {!isOrdered ? (
                     <Button
-                      size="lg"
-                      className="h-10 flex-1 text-base font-bold"
+                      size="sm"
+                      className="h-8 flex-1 text-sm font-bold"
                       onClick={() => handleOrder(item.type, item.id)}
                     >
                       Order
@@ -221,17 +221,17 @@ export default function FrontPage() {
                   ) : (
                     <>
                       <Button
-                        size="lg"
+                        size="sm"
                         variant="default"
-                        className="bg-green-600 hover:bg-green-700 h-10 flex-1 text-base font-bold"
+                        className="bg-green-600 hover:bg-green-700 h-8 flex-1 text-xs font-bold"
                         onClick={() => handleDelivered(orderId, item.id)}
                       >
                         Delivered
                       </Button>
                       <Button
-                        size="lg"
+                        size="sm"
                         variant="destructive"
-                        className="h-10 flex-1 text-base font-bold"
+                        className="h-8 flex-1 text-xs font-bold"
                         onClick={() => handleCancel(orderId, item.id)}
                       >
                         Cancel
@@ -245,11 +245,11 @@ export default function FrontPage() {
         </div>
 
         {/* Call Staff Button - Hold to activate siren */}
-        <div className="flex justify-center mt-4">
+        <div className="flex justify-center mt-2 shrink-0">
           <Button
             size="lg"
             variant="destructive"
-            className={`h-24 px-40 text-3xl font-bold select-none transition-all duration-150 ${
+            className={`h-14 px-16 text-xl font-bold select-none transition-all duration-150 ${
               isCallingStaff 
                 ? "bg-red-800 scale-95 ring-4 ring-red-400 animate-pulse" 
                 : "bg-red-600 hover:bg-red-700"
@@ -266,28 +266,28 @@ export default function FrontPage() {
       </div>
 
       {/* Cooking Panel */}
-      <div className="w-80 bg-card border border-border rounded-xl p-4 flex flex-col">
-        <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-3">
-          <ChefHat className="h-7 w-7 text-primary" />
+      <div className="w-64 bg-card border border-border rounded-lg p-3 flex flex-col min-h-0 overflow-hidden shrink-0">
+        <h2 className="text-base font-bold text-foreground mb-2 flex items-center gap-2 shrink-0">
+          <ChefHat className="h-5 w-5 text-primary" />
           Now Cooking
         </h2>
-        <div className="flex-1 overflow-y-auto space-y-3">
+        <div className="flex-1 overflow-y-auto space-y-2">
           {activeOrders.length === 0 ? (
-            <p className="text-muted-foreground text-lg text-center py-8">
+            <p className="text-muted-foreground text-sm text-center py-4">
               No orders cooking
             </p>
           ) : (
             activeOrders.map((order) => (
               <div
                 key={order.id}
-                className="bg-muted/50 rounded-lg p-4 border border-border"
+                className="bg-muted/50 rounded-md p-2 border border-border"
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-muted-foreground font-medium">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-muted-foreground font-medium">
                     #{order.id.slice(-4)}
                   </span>
                   <span
-                    className={`text-sm px-3 py-1 rounded-full font-semibold ${
+                    className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
                       order.status === "preparing"
                         ? "bg-primary/20 text-primary"
                         : "bg-muted text-muted-foreground"
@@ -297,7 +297,7 @@ export default function FrontPage() {
                   </span>
                 </div>
                 {order.items.map((item, idx) => (
-                  <div key={idx} className="text-lg font-semibold text-foreground">
+                  <div key={idx} className="text-sm font-semibold text-foreground">
                     {item.pizza ? (
                       <span>
                         {item.quantity > 1 && `${item.quantity}x `}{item.pizza.name} ({item.isFullPizza ? "Full" : "Half"})
