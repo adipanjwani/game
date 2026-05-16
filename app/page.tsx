@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { pizzas, sides, Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
@@ -23,6 +23,9 @@ export default function FrontPage() {
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [placedOrders, setPlacedOrders] = useState<Record<string, string>>({})
   const [isCallingStaff, setIsCallingStaff] = useState(false)
+  
+  const buzzerContextRef = useRef<AudioContext | null>(null)
+  const buzzerIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -111,8 +114,40 @@ export default function FrontPage() {
     })
   }
 
+  const playBeep = () => {
+    if (!buzzerContextRef.current) {
+      buzzerContextRef.current = new AudioContext()
+    }
+    const ctx = buzzerContextRef.current
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    
+    osc.type = "square"
+    osc.frequency.value = 800
+    gain.gain.setValueAtTime(0.3, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15)
+    
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.15)
+  }
+
+  const startBuzzer = () => {
+    playBeep()
+    buzzerIntervalRef.current = setInterval(playBeep, 300)
+  }
+
+  const stopBuzzer = () => {
+    if (buzzerIntervalRef.current) {
+      clearInterval(buzzerIntervalRef.current)
+      buzzerIntervalRef.current = null
+    }
+  }
+
   const handleSirenStart = async () => {
     setIsCallingStaff(true)
+    startBuzzer()
     await fetch("/api/siren", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -122,6 +157,7 @@ export default function FrontPage() {
 
   const handleSirenStop = async () => {
     setIsCallingStaff(false)
+    stopBuzzer()
     await fetch("/api/siren", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
