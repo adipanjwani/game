@@ -2,87 +2,37 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Order } from "@/lib/pizza-data"
-import { Pizza, AlertTriangle } from "lucide-react"
+import { Pizza, AlertTriangle, Monitor } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import Link from "next/link"
 
 export default function KitchenPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [sirenActive, setSirenActive] = useState(false)
   const [currentTime, setCurrentTime] = useState(Date.now())
-  const [newOrderIds, setNewOrderIds] = useState<Set<string>>(new Set())
-  const previousOrderIdsRef = useRef<Set<string>>(new Set())
   
-  const DELIVERY_TIME_LIMIT = 10 * 60 * 1000 // 10 minutes in milliseconds
+  const DELIVERY_TIME_LIMIT = 5 * 1000 // 5 seconds in milliseconds
   const audioContextRef = useRef<AudioContext | null>(null)
-  const buzzerIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const notificationAudioRef = useRef<AudioContext | null>(null)
-
-  // Play loud notification for new orders
-  const playNewOrderSound = useCallback(() => {
-    if (!notificationAudioRef.current) {
-      notificationAudioRef.current = new AudioContext()
-    }
-    const ctx = notificationAudioRef.current
-    
-    const playTone = (freq: number, startTime: number, duration: number) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = "sine"
-      osc.frequency.value = freq
-      gain.gain.setValueAtTime(1.0, startTime)
-      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start(startTime)
-      osc.stop(startTime + duration)
-    }
-    
-    const now = ctx.currentTime
-    // Loud ascending chime played twice
-    playTone(880, now, 0.15)
-    playTone(1100, now + 0.15, 0.15)
-    playTone(1320, now + 0.3, 0.3)
-    playTone(880, now + 0.7, 0.15)
-    playTone(1100, now + 0.85, 0.15)
-    playTone(1320, now + 1.0, 0.3)
-  }, [])
+  const oscillatorRef = useRef<OscillatorNode | null>(null)
 
   const fetchOrders = useCallback(async () => {
     try {
       const response = await fetch("/api/orders")
       if (response.ok) {
         const data = await response.json()
-        const newOrders: Order[] = data.orders || []
-        
-        // Check for new orders
-        const currentIds = new Set(newOrders.map((o: Order) => o.id))
-        const newIds: string[] = []
-        
-        currentIds.forEach((id) => {
-          if (!previousOrderIdsRef.current.has(id)) {
-            newIds.push(id)
-          }
-        })
-        
-        if (newIds.length > 0 && previousOrderIdsRef.current.size > 0) {
-          playNewOrderSound()
-          setNewOrderIds(new Set(newIds))
-          setTimeout(() => setNewOrderIds(new Set()), 2000)
-        }
-        
-        previousOrderIdsRef.current = currentIds
-        setOrders(newOrders)
+        setOrders(data.orders)
       }
-    } catch {
-      // Silently ignore
+    } catch (error) {
+      console.error("[v0] Error fetching orders:", error)
     } finally {
       setIsLoading(false)
     }
-  }, [playNewOrderSound])
+  }, [])
 
   useEffect(() => {
     fetchOrders()
-    const interval = setInterval(fetchOrders, 800) // Faster polling for kitchen
+    const interval = setInterval(fetchOrders, 2000)
     return () => clearInterval(interval)
   }, [fetchOrders])
 
@@ -94,72 +44,75 @@ export default function KitchenPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Poll for siren status - fast for responsiveness
+  // Poll for siren status
   useEffect(() => {
-    let isMounted = true
     const checkSiren = async () => {
       try {
         const res = await fetch("/api/siren")
-        if (isMounted && res.ok) {
-          const data = await res.json()
-          setSirenActive(data.active)
-        }
-      } catch {
-        // Silently ignore
+        const data = await res.json()
+        setSirenActive(data.active)
+      } catch (error) {
+        console.error("[v0] Error checking siren:", error)
       }
     }
     checkSiren()
-    const interval = setInterval(checkSiren, 300) // Faster for responsiveness
-    return () => {
-      isMounted = false
-      clearInterval(interval)
-    }
+    const interval = setInterval(checkSiren, 200)
+    return () => clearInterval(interval)
   }, [])
 
-  // Play buzzer beeping sound when Call Staff is active
+  // Play siren sound when active
   useEffect(() => {
-    if (!sirenActive) {
-      if (buzzerIntervalRef.current) {
-        clearInterval(buzzerIntervalRef.current)
-        buzzerIntervalRef.current = null
+    if (sirenActive) {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext()
       }
-      return
-    }
-
-    // Create audio context once
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext()
-    }
-    
-    const playBeep = () => {
       const ctx = audioContextRef.current
-      if (!ctx) return
       
-      try {
-        const osc = ctx.createOscillator()
-        const gain = ctx.createGain()
+      if (!oscillatorRef.current) {
+        const oscillator = ctx.createOscillator()
+        const gainNode = ctx.createGain()
         
-        osc.type = "square"
-        osc.frequency.value = 800
-        gain.gain.setValueAtTime(1.0, ctx.currentTime)
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15)
+        oscillator.type = "sawtooth"
+        oscillator.frequency.value = 800
+        gainNode.gain.value = 0.3
         
-        osc.connect(gain)
-        gain.connect(ctx.destination)
-        osc.start()
-        osc.stop(ctx.currentTime + 0.15)
-      } catch (e) {
-        // Ignore audio errors
+        oscillator.connect(gainNode)
+        gainNode.connect(ctx.destination)
+        oscillator.start()
+        
+        const modulate = () => {
+          if (oscillatorRef.current) {
+            const time = ctx.currentTime
+            oscillatorRef.current.frequency.setValueAtTime(800, time)
+            oscillatorRef.current.frequency.linearRampToValueAtTime(1200, time + 0.5)
+            oscillatorRef.current.frequency.linearRampToValueAtTime(800, time + 1)
+          }
+        }
+        modulate()
+        const sirenInterval = setInterval(modulate, 1000)
+        
+        oscillatorRef.current = oscillator
+        ;(oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }).sirenInterval = sirenInterval
+      }
+    } else {
+      if (oscillatorRef.current) {
+        const osc = oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }
+        if (osc.sirenInterval) {
+          clearInterval(osc.sirenInterval)
+        }
+        oscillatorRef.current.stop()
+        oscillatorRef.current = null
       }
     }
-
-    playBeep()
-    buzzerIntervalRef.current = setInterval(playBeep, 400)
     
     return () => {
-      if (buzzerIntervalRef.current) {
-        clearInterval(buzzerIntervalRef.current)
-        buzzerIntervalRef.current = null
+      if (oscillatorRef.current) {
+        const osc = oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }
+        if (osc.sirenInterval) {
+          clearInterval(osc.sirenInterval)
+        }
+        oscillatorRef.current.stop()
+        oscillatorRef.current = null
       }
     }
   }, [sirenActive])
@@ -190,58 +143,63 @@ export default function KitchenPage() {
   }
 
   return (
-    <div className={`h-screen bg-background p-4 flex flex-col overflow-hidden ${sirenActive ? "animate-pulse" : ""}`}>
+    <div className={`min-h-screen bg-background p-6 ${sirenActive ? "animate-pulse" : ""}`}>
       {/* Siren Alert Overlay */}
       {sirenActive && (
         <div className="fixed inset-0 z-50 bg-red-500/30 pointer-events-none flex items-center justify-center animate-pulse">
-          <div className="bg-red-600 text-white px-8 py-6 rounded-2xl flex items-center gap-4 shadow-2xl">
-            <AlertTriangle className="h-12 w-12" />
-            <span className="text-3xl font-bold">STAFF NEEDED!</span>
-            <AlertTriangle className="h-12 w-12" />
+          <div className="bg-red-600 text-white px-12 py-8 rounded-2xl flex items-center gap-4 shadow-2xl">
+            <AlertTriangle className="h-16 w-16" />
+            <span className="text-4xl font-bold">STAFF NEEDED!</span>
+            <AlertTriangle className="h-16 w-16" />
           </div>
         </div>
       )}
 
       {/* Header */}
-      <header className="shrink-0 mb-3">
-        <div className="flex items-center gap-2">
-          <Pizza className="h-8 w-8 text-primary" />
-          <h1 className="text-2xl font-bold text-foreground">Kitchen Display</h1>
+      <header className="mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Pizza className="h-10 w-10 text-primary" />
+            <h1 className="text-4xl font-bold text-foreground">Kitchen Display</h1>
+          </div>
+          <Button asChild size="lg" className="h-12 px-6 text-lg font-semibold">
+            <Link href="/">
+              <Monitor className="h-5 w-5 mr-2" />
+              Front View
+            </Link>
+          </Button>
         </div>
       </header>
 
       {/* Orders Display */}
       {isLoading ? (
-        <div className="flex-1 flex items-center justify-center text-muted-foreground text-xl">
+        <div className="text-center py-12 text-muted-foreground text-2xl">
           Loading orders...
         </div>
       ) : activeOrders.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <Pizza className="h-16 w-16 mb-4 text-muted-foreground/50" />
-          <p className="text-2xl text-muted-foreground">No active orders</p>
-          <p className="text-sm text-muted-foreground mt-1">
+        <div className="text-center py-24">
+          <Pizza className="h-24 w-24 mx-auto mb-6 text-muted-foreground/50" />
+          <p className="text-3xl text-muted-foreground">No active orders</p>
+          <p className="text-lg text-muted-foreground mt-2">
             Waiting for new orders...
           </p>
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 auto-rows-fr overflow-hidden">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-fr">
           {activeOrders.map((order) => {
             const overdue = isOverdue(order.createdAt)
-            const isNew = newOrderIds.has(order.id)
             return (
             <div
               key={order.id}
-              className={`border-2 rounded-xl p-4 flex flex-col transition-all ${
+              className={`border-4 rounded-2xl p-8 min-h-[250px] flex flex-col ${
                 overdue 
-                  ? "bg-red-500/30 border-red-500 animate-pulse" 
-                  : isNew
-                    ? "bg-green-500/30 border-green-500 animate-pulse ring-2 ring-green-400"
-                    : "bg-card border-border"
+                  ? "bg-red-500/20 border-red-500 animate-pulse" 
+                  : "bg-card border-border"
               }`}
             >
               {/* Timer */}
-              <div className="flex items-center justify-end mb-2">
-                <span className={`text-xl font-mono font-bold ${
+              <div className="flex items-center justify-end mb-4">
+                <span className={`text-2xl font-mono font-bold ${
                   overdue ? "text-red-500" : "text-foreground"
                 }`}>
                   {getTimeRemaining(order.createdAt)}
@@ -249,16 +207,16 @@ export default function KitchenPage() {
               </div>
 
               {/* Order Items */}
-              <div className="flex-1 flex flex-col justify-center space-y-2">
+              <div className="flex-1 flex flex-col justify-center space-y-6">
                 {order.items.map((item, index) => (
                   <div
                     key={index}
                     className="flex items-center justify-between"
                   >
-                    <span className="text-2xl font-bold text-foreground">
+                    <span className="text-4xl font-bold text-foreground">
                       {item.pizza?.name || item.side?.name}
                     </span>
-                    <span className="text-lg text-muted-foreground font-semibold">
+                    <span className="text-2xl text-muted-foreground font-semibold">
                       {item.quantity > 1 && `${item.quantity}x `}
                       {item.pizza && (item.isFullPizza ? "Full" : "Half")}
                     </span>
