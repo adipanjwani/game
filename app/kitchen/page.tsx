@@ -47,20 +47,44 @@ export default function KitchenPage() {
       const response = await fetch("/api/orders")
       if (response.ok) {
         const data = await response.json()
-        // Only update if orders actually changed (compare by JSON)
+        const serverOrders: Order[] = data.orders
+        
         setOrders((prevOrders) => {
-          const prevJson = JSON.stringify(prevOrders)
-          const newJson = JSON.stringify(data.orders)
-          if (prevJson !== newJson) {
-            // Check if new active orders were added
-            const prevActive = prevOrders.filter((o) => o.status === "pending" || o.status === "preparing")
-            const newActive = data.orders.filter((o: Order) => o.status === "pending" || o.status === "preparing")
-            if (newActive.length > prevActive.length) {
-              playNotificationSound()
-            }
-            return data.orders
+          // Create a map of existing orders by ID for quick lookup
+          const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
+          const serverOrderMap = new Map(serverOrders.map(o => [o.id, o]))
+          
+          // Check if new active orders were added for notification
+          const prevActive = prevOrders.filter((o) => o.status === "pending" || o.status === "preparing")
+          const newActive = serverOrders.filter((o) => o.status === "pending" || o.status === "preparing")
+          
+          // Find truly new orders (not just updated ones)
+          const newOrderIds = newActive.filter(o => !prevOrderMap.has(o.id))
+          if (newOrderIds.length > 0) {
+            playNotificationSound()
           }
-          return prevOrders
+          
+          // Merge: keep existing orders, update changed ones, add new ones, remove deleted ones
+          const mergedOrders: Order[] = []
+          
+          // Add/update orders from server
+          for (const serverOrder of serverOrders) {
+            const existingOrder = prevOrderMap.get(serverOrder.id)
+            if (existingOrder) {
+              // Update existing order if status changed
+              if (existingOrder.status !== serverOrder.status) {
+                mergedOrders.push(serverOrder)
+              } else {
+                // Keep existing reference to prevent re-render
+                mergedOrders.push(existingOrder)
+              }
+            } else {
+              // New order
+              mergedOrders.push(serverOrder)
+            }
+          }
+          
+          return mergedOrders
         })
       }
     } catch (error) {

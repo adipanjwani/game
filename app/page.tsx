@@ -52,28 +52,71 @@ export default function FrontPage() {
   const fetchOrders = async () => {
     const res = await fetch("/api/orders")
     const data = await res.json()
-    const cooking = data.orders.filter(
+    const serverOrders: Order[] = data.orders
+    const cooking = serverOrders.filter(
       (o: Order) => o.status === "pending" || o.status === "preparing"
     )
-    setActiveOrders(cooking)
     
-    // Always rebuild placedOrders and orderTimes from server data
-    // This ensures all devices show the same state
-    const newPlacedOrders: Record<string, string> = {}
-    const newOrderTimes: Record<string, number> = {}
-    
-    cooking.forEach((order: Order) => {
-      order.items.forEach((item) => {
-        const itemId = item.pizza?.id || item.side?.id
-        if (itemId) {
-          newPlacedOrders[itemId] = order.id
-          newOrderTimes[itemId] = new Date(order.createdAt).getTime()
+    // Merge orders instead of replacing - add new, remove completed
+    setActiveOrders((prevOrders) => {
+      const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
+      const serverActiveIds = new Set(cooking.map(o => o.id))
+      
+      const mergedOrders: Order[] = []
+      
+      // Add/update orders from server
+      for (const serverOrder of cooking) {
+        const existingOrder = prevOrderMap.get(serverOrder.id)
+        if (existingOrder && existingOrder.status === serverOrder.status) {
+          // Keep existing reference to prevent re-render
+          mergedOrders.push(existingOrder)
+        } else {
+          mergedOrders.push(serverOrder)
         }
-      })
+      }
+      
+      return mergedOrders
     })
     
-    setPlacedOrders(newPlacedOrders)
-    setOrderTimes(newOrderTimes)
+    // Update placedOrders and orderTimes incrementally
+    setPlacedOrders((prev) => {
+      const newPlacedOrders: Record<string, string> = {}
+      cooking.forEach((order: Order) => {
+        order.items.forEach((item) => {
+          const itemId = item.pizza?.id || item.side?.id
+          if (itemId) {
+            newPlacedOrders[itemId] = order.id
+          }
+        })
+      })
+      // Only update if changed
+      const prevKeys = Object.keys(prev).sort().join(',')
+      const newKeys = Object.keys(newPlacedOrders).sort().join(',')
+      if (prevKeys !== newKeys) {
+        return newPlacedOrders
+      }
+      return prev
+    })
+    
+    setOrderTimes((prev) => {
+      const newOrderTimes: Record<string, number> = {}
+      cooking.forEach((order: Order) => {
+        order.items.forEach((item) => {
+          const itemId = item.pizza?.id || item.side?.id
+          if (itemId) {
+            // Keep existing time if we already have it
+            newOrderTimes[itemId] = prev[itemId] || new Date(order.createdAt).getTime()
+          }
+        })
+      })
+      // Only update if keys changed
+      const prevKeys = Object.keys(prev).sort().join(',')
+      const newKeys = Object.keys(newOrderTimes).sort().join(',')
+      if (prevKeys !== newKeys) {
+        return newOrderTimes
+      }
+      return prev
+    })
   }
 
   // Initial fetch and SSE for real-time updates
