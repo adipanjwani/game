@@ -75,7 +75,7 @@ export default function FrontPage() {
       const gain = ctx.createGain()
       osc.type = "sine"
       osc.frequency.value = freq
-      gain.gain.setValueAtTime(0.2, startTime)
+      gain.gain.setValueAtTime(1.0, startTime)
       gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
       osc.connect(gain)
       gain.connect(ctx.destination)
@@ -100,7 +100,7 @@ export default function FrontPage() {
       const gain = ctx.createGain()
       osc.type = "sine"
       osc.frequency.value = freq
-      gain.gain.setValueAtTime(0.2, startTime)
+      gain.gain.setValueAtTime(1.0, startTime)
       gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
       osc.connect(gain)
       gain.connect(ctx.destination)
@@ -176,7 +176,7 @@ export default function FrontPage() {
     
     osc.type = "square"
     osc.frequency.value = 800
-    gain.gain.setValueAtTime(0.3, ctx.currentTime)
+    gain.gain.setValueAtTime(1.0, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15)
     
     osc.connect(gain)

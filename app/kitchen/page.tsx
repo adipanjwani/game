@@ -74,7 +74,7 @@ export default function KitchenPage() {
         
         oscillator.type = "sawtooth"
         oscillator.frequency.value = 800
-        gainNode.gain.value = 0.3
+        gainNode.gain.value = 1.0
         
         oscillator.connect(gainNode)
         gainNode.connect(ctx.destination)
