@@ -37,16 +37,19 @@ export default function FrontPage() {
       )
       setActiveOrders(cooking)
       
-      setPlacedOrders((prev) => {
-        const activeOrderIds = new Set(cooking.map((o: Order) => o.id))
-        const updated: Record<string, string> = {}
-        for (const [itemId, orderId] of Object.entries(prev)) {
-          if (activeOrderIds.has(orderId)) {
-            updated[itemId] = orderId
+      // Build a map of item IDs to order IDs from active orders
+      const activeItemToOrder: Record<string, string> = {}
+      cooking.forEach((order: Order) => {
+        order.items.forEach((item) => {
+          const itemId = item.pizza?.id || item.side?.id
+          if (itemId) {
+            activeItemToOrder[itemId] = order.id
           }
-        }
-        return updated
+        })
       })
+      
+      // Update placedOrders to match active orders
+      setPlacedOrders(activeItemToOrder)
     }
     fetchOrders()
     const interval = setInterval(fetchOrders, 2000)
