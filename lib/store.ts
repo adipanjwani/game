@@ -117,3 +117,19 @@ export function sendStateToClient(controller: ReadableStreamDefaultController): 
     globalStore.clients.delete(controller)
   }
 }
+
+// Broadcast siren state to all connected clients
+export function broadcastSiren(active: boolean): void {
+  const message = `data: ${JSON.stringify({
+    type: "siren_update",
+    active
+  })}\n\n`
+  
+  globalStore.clients.forEach((controller) => {
+    try {
+      controller.enqueue(message)
+    } catch {
+      globalStore.clients.delete(controller)
+    }
+  })
+}
