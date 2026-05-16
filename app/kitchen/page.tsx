@@ -15,6 +15,32 @@ export default function KitchenPage() {
   const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
   const audioContextRef = useRef<AudioContext | null>(null)
   const oscillatorRef = useRef<OscillatorNode | null>(null)
+  const prevOrderCountRef = useRef<number>(0)
+  
+  // Play notification sound for new orders
+  const playNotificationSound = useCallback(() => {
+    try {
+      const ctx = new AudioContext()
+      const oscillator = ctx.createOscillator()
+      const gainNode = ctx.createGain()
+      
+      oscillator.type = "sine"
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime) // A5 note
+      oscillator.frequency.setValueAtTime(1100, ctx.currentTime + 0.1) // Higher pitch
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime + 0.2) // Back down
+      
+      gainNode.gain.setValueAtTime(0.3, ctx.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4)
+      
+      oscillator.connect(gainNode)
+      gainNode.connect(ctx.destination)
+      
+      oscillator.start(ctx.currentTime)
+      oscillator.stop(ctx.currentTime + 0.4)
+    } catch (error) {
+      console.error("[v0] Error playing notification:", error)
+    }
+  }, [])
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -26,6 +52,12 @@ export default function KitchenPage() {
           const prevJson = JSON.stringify(prevOrders)
           const newJson = JSON.stringify(data.orders)
           if (prevJson !== newJson) {
+            // Check if new active orders were added
+            const prevActive = prevOrders.filter((o) => o.status === "pending" || o.status === "preparing")
+            const newActive = data.orders.filter((o: Order) => o.status === "pending" || o.status === "preparing")
+            if (newActive.length > prevActive.length) {
+              playNotificationSound()
+            }
             return data.orders
           }
           return prevOrders
@@ -36,7 +68,7 @@ export default function KitchenPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [playNotificationSound])
 
   // Initial fetch and SSE for real-time updates
   useEffect(() => {
