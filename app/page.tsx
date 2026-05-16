@@ -23,6 +23,7 @@ export default function FrontPage() {
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [placedOrders, setPlacedOrders] = useState<Record<string, string>>({})
   const [orderTimes, setOrderTimes] = useState<Record<string, number>>({}) // Track when each item was ordered
+  const [pendingItems, setPendingItems] = useState<Set<string>>(new Set()) // Items with in-flight requests
   const [currentTime, setCurrentTime] = useState(Date.now())
   const [isCallingStaff, setIsCallingStaff] = useState(false)
   
@@ -57,31 +58,50 @@ export default function FrontPage() {
     
     setActiveOrders(cooking)
     
-    // Update placedOrders from server state
-    const newPlacedOrders: Record<string, string> = {}
+    // Build server-side placed orders
+    const serverPlacedOrders: Record<string, string> = {}
+    const serverOrderTimes: Record<string, number> = {}
     cooking.forEach((order: Order) => {
       order.items.forEach((item) => {
         const itemId = item.pizza?.id || item.side?.id
         if (itemId) {
-          newPlacedOrders[itemId] = order.id
+          serverPlacedOrders[itemId] = order.id
+          serverOrderTimes[itemId] = new Date(order.createdAt).getTime()
         }
       })
     })
-    setPlacedOrders(newPlacedOrders)
     
-    // Update orderTimes from server state (use server createdAt)
+    // Merge with pending (in-flight) items - don't overwrite items that are still being submitted
+    setPlacedOrders((prev) => {
+      const merged = { ...serverPlacedOrders }
+      // Keep optimistic entries for items still in-flight
+      setPendingItems((currentPending) => {
+        const stillPending = new Set<string>()
+        currentPending.forEach((itemId) => {
+          if (!serverPlacedOrders[itemId]) {
+            // Server doesn't know about this yet, keep optimistic entry
+            merged[itemId] = prev[itemId] || "pending"
+            stillPending.add(itemId)
+          }
+          // If server has it, remove from pending
+        })
+        return stillPending
+      })
+      return merged
+    })
+    
     setOrderTimes((prev) => {
-      const newOrderTimes: Record<string, number> = {}
-      cooking.forEach((order: Order) => {
-        order.items.forEach((item) => {
-          const itemId = item.pizza?.id || item.side?.id
-          if (itemId) {
-            // Use server time for consistency across devices
-            newOrderTimes[itemId] = new Date(order.createdAt).getTime()
+      const merged = { ...serverOrderTimes }
+      // Keep optimistic times for pending items
+      setPendingItems((currentPending) => {
+        currentPending.forEach((itemId) => {
+          if (!serverOrderTimes[itemId] && prev[itemId]) {
+            merged[itemId] = prev[itemId]
           }
         })
+        return currentPending
       })
-      return newOrderTimes
+      return merged
     })
   }
 
@@ -135,6 +155,9 @@ export default function FrontPage() {
     
     if (!item) return
 
+    // Mark as pending (in-flight) so SSE updates don't overwrite
+    setPendingItems((prev) => new Set(prev).add(id))
+    
     // Optimistic update
     setPlacedOrders((prev) => ({ ...prev, [id]: "pending" }))
     setOrderTimes((prev) => ({ ...prev, [id]: Date.now() }))
@@ -145,12 +168,31 @@ export default function FrontPage() {
       quantity: quantities[id] || 1,
     }]
 
-    await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items: orderItems }),
-    })
-    // SSE will sync the actual order ID
+    try {
+      await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: orderItems }),
+      })
+    } catch (error) {
+      // Revert optimistic update on failure
+      setPendingItems((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+      setPlacedOrders((prev) => {
+        const updated = { ...prev }
+        delete updated[id]
+        return updated
+      })
+      setOrderTimes((prev) => {
+        const updated = { ...prev }
+        delete updated[id]
+        return updated
+      })
+    }
+    // SSE will sync the actual order ID and clear from pendingItems
   }
 
   const handleDelivered = async (orderId: string, itemId: string) => {
