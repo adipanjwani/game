@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Order, OrderItem } from "@/lib/pizza-data"
 
-// In-memory store for orders (resets on server restart)
+// Use global to persist orders across hot module reloads in development
 // For production, use a database
-let orders: Order[] = []
+const globalForOrders = globalThis as unknown as { orders: Order[] }
+if (!globalForOrders.orders) {
+  globalForOrders.orders = []
+}
+const orders = globalForOrders.orders
 
 export async function GET() {
   return NextResponse.json({ orders })
@@ -61,7 +65,9 @@ export async function DELETE(request: NextRequest) {
   const action = searchParams.get("action")
 
   if (action === "clear-completed") {
-    orders = orders.filter((o) => o.status !== "completed")
+    const activeOrders = orders.filter((o) => o.status !== "completed")
+    globalForOrders.orders.length = 0
+    globalForOrders.orders.push(...activeOrders)
     return NextResponse.json({ success: true })
   }
 
