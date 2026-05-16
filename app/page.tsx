@@ -88,12 +88,23 @@ export default function FrontPage() {
   // SSE for real-time state updates from centralized store
   useEffect(() => {
     const eventSource = new EventSource("/api/orders/stream")
+    let lastOrdersJson = ""
     
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
       
+      // Ignore heartbeats - they just keep connection alive
+      if (data.type === "heartbeat") {
+        return
+      }
+      
       if (data.type === "state_update" && data.state) {
-        processStateUpdate(data.state.orders)
+        // Only process if orders actually changed
+        const newOrdersJson = JSON.stringify(data.state.orders)
+        if (newOrdersJson !== lastOrdersJson) {
+          lastOrdersJson = newOrdersJson
+          processStateUpdate(data.state.orders)
+        }
       }
     }
     

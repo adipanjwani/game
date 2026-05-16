@@ -49,21 +49,39 @@ export default function KitchenPage() {
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
       
+      // Ignore heartbeats - they just keep connection alive
+      if (data.type === "heartbeat") {
+        return
+      }
+      
       if (data.type === "state_update" && data.state) {
         const serverOrders: Order[] = data.state.orders
         
         setOrders((prevOrders) => {
-          const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
-          const prevActive = prevOrders.filter((o) => o.status === "pending" || o.status === "preparing")
-          const newActive = serverOrders.filter((o) => o.status === "pending" || o.status === "preparing")
+          // Compare to see if there are actual changes
+          const prevIds = new Set(prevOrders.map(o => o.id))
+          const serverIds = new Set(serverOrders.map(o => o.id))
           
-          // Play sound for truly new orders
-          const newOrderIds = newActive.filter(o => !prevOrderMap.has(o.id))
+          // Check for new orders
+          const newOrderIds = serverOrders.filter(o => !prevIds.has(o.id))
           if (newOrderIds.length > 0 && prevOrders.length > 0) {
             playNotificationSound()
           }
           
-          return serverOrders
+          // Check for status changes
+          const prevStatusMap = new Map(prevOrders.map(o => [o.id, o.status]))
+          const hasStatusChange = serverOrders.some(o => prevStatusMap.get(o.id) !== o.status)
+          
+          // Check for removed orders
+          const hasRemovedOrders = prevOrders.some(o => !serverIds.has(o.id))
+          
+          // Only update if there are actual changes
+          if (newOrderIds.length > 0 || hasStatusChange || hasRemovedOrders) {
+            return serverOrders
+          }
+          
+          // No changes, keep existing reference
+          return prevOrders
         })
         setIsLoading(false)
       }
