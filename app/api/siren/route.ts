@@ -25,13 +25,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { active } = body as { active: boolean }
     
-    console.log("[v0] Siren POST received, active:", active)
-    
     globalForSiren.sirenActive = active
     globalForSiren.sirenLastUpdate = Date.now()
     
     // Broadcast siren state to all connected clients via SSE
-    console.log("[v0] Broadcasting siren state:", active)
     broadcastSiren(active)
     
     return NextResponse.json({ active: globalForSiren.sirenActive })

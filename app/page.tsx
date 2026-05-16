@@ -219,20 +219,20 @@ export default function FrontPage() {
   ]
 
   return (
-    <div className="h-dvh bg-background p-2 flex flex-col gap-1 overflow-hidden">
+    <div className="h-dvh bg-background p-2 md:p-3 flex flex-col gap-1 md:gap-2 overflow-hidden">
       {/* Menu Panel */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <header className="flex items-center justify-between mb-1 shrink-0">
-          <h1 className="text-lg font-bold text-foreground">Menu</h1>
+        <header className="flex items-center justify-between mb-1 md:mb-2 shrink-0">
+          <h1 className="text-lg md:text-xl font-bold text-foreground">Menu</h1>
           <Link href="/kitchen">
-            <Button variant="outline" size="sm" className="gap-1 text-xs h-7">
-              <ChefHat className="h-3.5 w-3.5" />
+            <Button variant="outline" size="sm" className="gap-1 text-xs md:text-sm h-7 md:h-8">
+              <ChefHat className="h-3.5 w-3.5 md:h-4 md:w-4" />
               Kitchen
             </Button>
           </Link>
         </header>
 
-        <div className="flex-1 grid grid-cols-2 gap-1 content-start overflow-y-auto overflow-x-hidden">
+        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-1 md:gap-1.5 content-start overflow-y-auto overflow-x-hidden">
           {allItems.map((item) => {
             const isPizza = item.type === "pizza"
             const isFullPizza = isPizza ? pizzaSizes[item.id] : false
@@ -241,39 +241,39 @@ export default function FrontPage() {
             const qty = quantities[item.id] || 1
             
             return (
-              <div key={item.id} className="flex items-center bg-card border border-border rounded px-2 py-1 h-[52px]">
+              <div key={item.id} className="flex items-center bg-card border border-border rounded px-2 md:px-3 py-1 md:py-1.5 h-[48px] md:h-[56px]">
                 {/* Left: Name */}
-                <span className="text-sm font-bold text-foreground whitespace-nowrap w-24 shrink-0">{item.name}</span>
+                <span className="text-xs sm:text-sm font-bold text-foreground whitespace-nowrap w-20 sm:w-24 shrink-0">{item.name}</span>
 
                 {/* Center: Quantity + Toggle */}
-                <div className="flex-1 flex items-center justify-center gap-3">
+                <div className="flex-1 flex items-center justify-center gap-2 sm:gap-3">
                   {/* Quantity Controls */}
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-0.5 sm:gap-1">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 w-8 p-0 touch-manipulation active:scale-95 transition-transform"
+                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 touch-manipulation active:scale-95 transition-transform"
                       onClick={() => handleQuantityChange(item.id, -1)}
                       disabled={isOrdered}
                     >
-                      <Minus className="h-3.5 w-3.5" />
+                      <Minus className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                     </Button>
-                    <span className="w-6 text-center font-bold text-sm">{qty}</span>
+                    <span className="w-5 sm:w-6 text-center font-bold text-xs sm:text-sm">{qty}</span>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 w-8 p-0 touch-manipulation active:scale-95 transition-transform"
+                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 touch-manipulation active:scale-95 transition-transform"
                       onClick={() => handleQuantityChange(item.id, 1)}
                       disabled={isOrdered}
                     >
-                      <Plus className="h-3.5 w-3.5" />
+                      <Plus className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                     </Button>
                   </div>
                   
                   {isPizza && !('noSizeToggle' in item && item.noSizeToggle) && (
                     <div className="flex items-center gap-0.5 select-none">
                       <span 
-                        className={`text-xs font-semibold cursor-pointer px-0.5 ${!isFullPizza ? "text-primary" : "text-muted-foreground"}`}
+                        className={`text-[10px] sm:text-xs font-semibold cursor-pointer px-0.5 ${!isFullPizza ? "text-primary" : "text-muted-foreground"}`}
                         onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: false }))}
                       >
                         Half
@@ -281,10 +281,10 @@ export default function FrontPage() {
                       <Switch
                         checked={isFullPizza}
                         onCheckedChange={(checked) => setPizzaSizes((prev) => ({ ...prev, [item.id]: checked }))}
-                        className="scale-90"
+                        className="scale-75 sm:scale-90"
                       />
                       <span 
-                        className={`text-xs font-semibold cursor-pointer px-0.5 ${isFullPizza ? "text-primary" : "text-muted-foreground"}`}
+                        className={`text-[10px] sm:text-xs font-semibold cursor-pointer px-0.5 ${isFullPizza ? "text-primary" : "text-muted-foreground"}`}
                         onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: true }))}
                       >
                         Full
@@ -294,19 +294,19 @@ export default function FrontPage() {
                 </div>
 
                 {/* Right: Timer + Buttons */}
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                   {isOrdered && orderTimes[item.id] && (
-                    <span className={`text-sm font-mono font-bold w-12 text-right ${
+                    <span className={`text-xs sm:text-sm font-mono font-bold w-10 sm:w-12 text-right ${
                       isOverdue(orderTimes[item.id]) ? "text-red-500" : "text-primary"
                     }`}>
                       {getTimeRemaining(orderTimes[item.id])}
                     </span>
                   )}
-                  <div className="flex gap-1 w-36">
+                  <div className="flex gap-0.5 sm:gap-1 w-24 sm:w-36">
                     {!isOrdered ? (
                       <Button
                         size="sm"
-                        className="h-8 flex-1 text-sm font-bold touch-manipulation active:scale-95 transition-transform"
+                        className="h-7 sm:h-8 flex-1 text-xs sm:text-sm font-bold touch-manipulation active:scale-95 transition-transform"
                         onClick={() => handleOrder(item.type, item.id)}
                       >
                         Order
@@ -316,18 +316,20 @@ export default function FrontPage() {
                         <Button
                           size="sm"
                           variant="default"
-                          className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-8 flex-1 text-xs font-bold touch-manipulation active:scale-95 transition-transform"
+                          className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-7 sm:h-8 flex-1 text-[10px] sm:text-xs font-bold touch-manipulation active:scale-95 transition-transform"
                           onClick={() => handleDelivered(orderId, item.id)}
                         >
-                          Delivered
+                          <span className="hidden sm:inline">Delivered</span>
+                          <Check className="h-3.5 w-3.5 sm:hidden" />
                         </Button>
                         <Button
                           size="sm"
                           variant="destructive"
-                          className="h-8 flex-1 text-xs font-bold touch-manipulation active:scale-95 transition-transform"
+                          className="h-7 sm:h-8 flex-1 text-[10px] sm:text-xs font-bold touch-manipulation active:scale-95 transition-transform"
                           onClick={() => handleCancel(orderId, item.id)}
                         >
-                          Cancel
+                          <span className="hidden sm:inline">Cancel</span>
+                          <X className="h-3.5 w-3.5 sm:hidden" />
                         </Button>
                       </>
                     )}
@@ -339,11 +341,11 @@ export default function FrontPage() {
         </div>
 
         {/* Call Staff Button - Hold to activate siren */}
-        <div className="flex justify-center mt-1 shrink-0">
+        <div className="flex justify-center mt-1 md:mt-2 shrink-0">
           <Button
             size="lg"
             variant="destructive"
-            className={`h-10 px-10 text-base font-bold select-none transition-all duration-150 ${
+            className={`h-9 sm:h-10 px-6 sm:px-10 text-sm sm:text-base font-bold select-none transition-all duration-150 ${
               isCallingStaff 
                 ? "bg-red-800 scale-95 ring-4 ring-red-400 animate-pulse" 
                 : "bg-red-600 hover:bg-red-700"

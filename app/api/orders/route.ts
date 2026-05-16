@@ -8,6 +8,9 @@ import {
   clearAllOrders 
 } from "@/lib/store"
 
+// Counter for unique order IDs
+let orderCounter = 0
+
 export async function GET() {
   return NextResponse.json({ orders: getOrders() })
 }
@@ -20,8 +23,10 @@ export async function POST(request: NextRequest) {
       tableNumber?: number
     }
 
+    // Use counter + timestamp + random for guaranteed unique IDs
+    orderCounter++
     const order: Order = {
-      id: `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+      id: `ORD-${Date.now()}-${orderCounter}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`,
       items,
       status: "pending",
       createdAt: new Date(),

@@ -15,19 +15,29 @@ export default function KitchenPage() {
   const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
   const audioContextRef = useRef<AudioContext | null>(null)
   const oscillatorRef = useRef<OscillatorNode | null>(null)
-  const prevOrderCountRef = useRef<number>(0)
+  const gainNodeRef = useRef<GainNode | null>(null)
+  const [audioEnabled, setAudioEnabled] = useState(false)
+  
+  // Initialize audio context on user interaction
+  const enableAudio = useCallback(() => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContext()
+      setAudioEnabled(true)
+    }
+  }, [])
   
   // Play notification sound for new orders
   const playNotificationSound = useCallback(() => {
+    if (!audioContextRef.current) return
     try {
-      const ctx = new AudioContext()
+      const ctx = audioContextRef.current
       const oscillator = ctx.createOscillator()
       const gainNode = ctx.createGain()
       
       oscillator.type = "sine"
-      oscillator.frequency.setValueAtTime(880, ctx.currentTime) // A5 note
-      oscillator.frequency.setValueAtTime(1100, ctx.currentTime + 0.1) // Higher pitch
-      oscillator.frequency.setValueAtTime(880, ctx.currentTime + 0.2) // Back down
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime)
+      oscillator.frequency.setValueAtTime(1100, ctx.currentTime + 0.1)
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime + 0.2)
       
       gainNode.gain.setValueAtTime(0.3, ctx.currentTime)
       gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4)
@@ -88,7 +98,6 @@ export default function KitchenPage() {
       
       // Handle siren updates via SSE
       if (data.type === "siren_update") {
-        console.log("[v0] Siren update received:", data.active)
         setSirenActive(data.active)
       }
     }
@@ -115,11 +124,9 @@ export default function KitchenPage() {
 
   // Play siren sound when active
   useEffect(() => {
-    console.log("[v0] Siren effect triggered, sirenActive:", sirenActive)
+    if (!audioContextRef.current) return
+    
     if (sirenActive) {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext()
-      }
       const ctx = audioContextRef.current
       
       if (!oscillatorRef.current) {
@@ -128,15 +135,19 @@ export default function KitchenPage() {
         
         oscillator.type = "sawtooth"
         oscillator.frequency.value = 800
-        gainNode.gain.value = 0.3
+        gainNode.gain.value = 0.4
         
         oscillator.connect(gainNode)
         gainNode.connect(ctx.destination)
         oscillator.start()
         
+        oscillatorRef.current = oscillator
+        gainNodeRef.current = gainNode
+        
+        // Modulate frequency for siren effect
         const modulate = () => {
-          if (oscillatorRef.current) {
-            const time = ctx.currentTime
+          if (oscillatorRef.current && audioContextRef.current) {
+            const time = audioContextRef.current.currentTime
             oscillatorRef.current.frequency.setValueAtTime(800, time)
             oscillatorRef.current.frequency.linearRampToValueAtTime(1200, time + 0.5)
             oscillatorRef.current.frequency.linearRampToValueAtTime(800, time + 1)
@@ -144,8 +155,6 @@ export default function KitchenPage() {
         }
         modulate()
         const sirenInterval = setInterval(modulate, 1000)
-        
-        oscillatorRef.current = oscillator
         ;(oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }).sirenInterval = sirenInterval
       }
     } else {
@@ -154,19 +163,11 @@ export default function KitchenPage() {
         if (osc.sirenInterval) {
           clearInterval(osc.sirenInterval)
         }
-        oscillatorRef.current.stop()
+        try {
+          oscillatorRef.current.stop()
+        } catch {}
         oscillatorRef.current = null
-      }
-    }
-    
-    return () => {
-      if (oscillatorRef.current) {
-        const osc = oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }
-        if (osc.sirenInterval) {
-          clearInterval(osc.sirenInterval)
-        }
-        oscillatorRef.current.stop()
-        oscillatorRef.current = null
+        gainNodeRef.current = null
       }
     }
   }, [sirenActive])
@@ -218,13 +219,20 @@ export default function KitchenPage() {
             <Pizza className="h-5 w-5 md:h-6 md:w-6 lg:h-7 lg:w-7 text-primary" />
             <h1 className="text-lg md:text-xl lg:text-2xl font-bold text-foreground">Kitchen Display</h1>
           </div>
-          <Button asChild size="sm" className="text-xs md:text-sm">
-            <Link href="/">
-              <Monitor className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
-              <span className="hidden md:inline">Front View</span>
-              <span className="md:hidden">Front</span>
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            {!audioEnabled && (
+              <Button size="sm" variant="outline" onClick={enableAudio} className="text-xs">
+                Enable Sound
+              </Button>
+            )}
+            <Button asChild size="sm" className="text-xs md:text-sm">
+              <Link href="/">
+                <Monitor className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
+                <span className="hidden md:inline">Front View</span>
+                <span className="md:hidden">Front</span>
+              </Link>
+            </Button>
+          </div>
         </div>
       </header>
 
