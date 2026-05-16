@@ -26,6 +26,7 @@ export default function FrontPage() {
   
   const buzzerContextRef = useRef<AudioContext | null>(null)
   const buzzerIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const orderSoundRef = useRef<AudioContext | null>(null)
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -63,6 +64,31 @@ export default function FrontPage() {
     }))
   }
 
+  const playOrderSound = () => {
+    if (!orderSoundRef.current) {
+      orderSoundRef.current = new AudioContext()
+    }
+    const ctx = orderSoundRef.current
+    
+    const playTone = (freq: number, startTime: number, duration: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = "sine"
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.2, startTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(startTime)
+      osc.stop(startTime + duration)
+    }
+    
+    const now = ctx.currentTime
+    playTone(523, now, 0.1)        // C5
+    playTone(659, now + 0.1, 0.1)  // E5
+    playTone(784, now + 0.2, 0.2)  // G5
+  }
+
   const handleOrder = async (type: "pizza" | "side", id: string) => {
     const item = type === "pizza" 
       ? pizzas.find((p) => p.id === id)
@@ -84,6 +110,7 @@ export default function FrontPage() {
     
     const data = await res.json()
     if (data.order) {
+      playOrderSound()
       setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
     }
   }
