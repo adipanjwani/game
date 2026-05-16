@@ -19,16 +19,38 @@ export default function KitchenPage() {
   const [audioEnabled, setAudioEnabled] = useState(false)
   
   // Initialize audio context on user interaction
-  const enableAudio = useCallback(() => {
+  const enableAudio = useCallback(async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new AudioContext()
-      setAudioEnabled(true)
     }
+    // Resume context if suspended (required by browsers)
+    if (audioContextRef.current.state === "suspended") {
+      await audioContextRef.current.resume()
+    }
+    // Play a test beep to confirm audio works
+    const ctx = audioContextRef.current
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = "sine"
+    osc.frequency.value = 440
+    gain.gain.setValueAtTime(0.2, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2)
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.2)
+    
+    setAudioEnabled(true)
+    console.log("[v0] Audio enabled, context state:", audioContextRef.current.state)
   }, [])
   
   // Play notification sound for new orders
   const playNotificationSound = useCallback(() => {
-    if (!audioContextRef.current) return
+    console.log("[v0] playNotificationSound called, audioContext:", audioContextRef.current?.state)
+    if (!audioContextRef.current) {
+      console.log("[v0] No audio context, skipping notification sound")
+      return
+    }
     try {
       const ctx = audioContextRef.current
       const oscillator = ctx.createOscillator()
@@ -47,6 +69,7 @@ export default function KitchenPage() {
       
       oscillator.start(ctx.currentTime)
       oscillator.stop(ctx.currentTime + 0.4)
+      console.log("[v0] Notification sound played")
     } catch (error) {
       console.error("[v0] Error playing notification:", error)
     }
@@ -124,7 +147,11 @@ export default function KitchenPage() {
 
   // Play siren sound when active
   useEffect(() => {
-    if (!audioContextRef.current) return
+    console.log("[v0] Siren effect, sirenActive:", sirenActive, "audioContext:", audioContextRef.current?.state)
+    if (!audioContextRef.current) {
+      console.log("[v0] No audio context for siren")
+      return
+    }
     
     if (sirenActive) {
       const ctx = audioContextRef.current
