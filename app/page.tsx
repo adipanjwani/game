@@ -49,7 +49,7 @@ export default function FrontPage() {
     return currentTime - orderTime > DELIVERY_TIME_LIMIT
   }
 
-  const fetchOrders = async (isInitialLoad = false) => {
+  const fetchOrders = async () => {
     const res = await fetch("/api/orders")
     const data = await res.json()
     const cooking = data.orders.filter(
@@ -57,29 +57,28 @@ export default function FrontPage() {
     )
     setActiveOrders(cooking)
     
-    // On initial load, rebuild placedOrders and orderTimes from active orders
-    if (isInitialLoad) {
-      const newPlacedOrders: Record<string, string> = {}
-      const newOrderTimes: Record<string, number> = {}
-      
-      cooking.forEach((order: Order) => {
-        order.items.forEach((item) => {
-          const itemId = item.pizza?.id || item.side?.id
-          if (itemId) {
-            newPlacedOrders[itemId] = order.id
-            newOrderTimes[itemId] = new Date(order.createdAt).getTime()
-          }
-        })
+    // Always rebuild placedOrders and orderTimes from server data
+    // This ensures all devices show the same state
+    const newPlacedOrders: Record<string, string> = {}
+    const newOrderTimes: Record<string, number> = {}
+    
+    cooking.forEach((order: Order) => {
+      order.items.forEach((item) => {
+        const itemId = item.pizza?.id || item.side?.id
+        if (itemId) {
+          newPlacedOrders[itemId] = order.id
+          newOrderTimes[itemId] = new Date(order.createdAt).getTime()
+        }
       })
-      
-      setPlacedOrders(newPlacedOrders)
-      setOrderTimes(newOrderTimes)
-    }
+    })
+    
+    setPlacedOrders(newPlacedOrders)
+    setOrderTimes(newOrderTimes)
   }
 
   // Initial fetch and SSE for real-time updates
   useEffect(() => {
-    fetchOrders(true) // Pass true for initial load to rebuild state
+    fetchOrders()
     
     // Connect to SSE for instant updates
     const eventSource = new EventSource("/api/orders/stream")
