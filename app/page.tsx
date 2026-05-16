@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { pizzas, sides, Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { Check, X, Plus, Minus } from "lucide-react"
+import { Plus, Minus } from "lucide-react"
 
 export default function FrontPage() {
   const [pizzaSizes, setPizzaSizes] = useState<Record<string, boolean>>(
@@ -21,17 +21,17 @@ export default function FrontPage() {
   })
   const [placedOrders, setPlacedOrders] = useState<Record<string, string>>({})
   const [isCallingStaff, setIsCallingStaff] = useState(false)
-  const [processingOrders, setProcessingOrders] = useState<Record<string, boolean>>({})
 
-  useEffect(() => {
-    const fetchOrders = async () => {
+  // Fast polling for real-time sync
+  const fetchOrders = useCallback(async () => {
+    try {
       const res = await fetch("/api/orders")
+      if (!res.ok) return
       const data = await res.json()
-      const activeOrders = data.orders.filter(
+      const activeOrders = (data.orders || []).filter(
         (o: Order) => o.status === "pending" || o.status === "preparing"
       )
       
-      // Build a map of item IDs to order IDs from active orders
       const activeItemToOrder: Record<string, string> = {}
       activeOrders.forEach((order: Order) => {
         order.items.forEach((item) => {
@@ -42,13 +42,17 @@ export default function FrontPage() {
         })
       })
       
-      // Update placedOrders to match active orders
       setPlacedOrders(activeItemToOrder)
+    } catch {
+      // Ignore errors for fast recovery
     }
-    fetchOrders()
-    const interval = setInterval(fetchOrders, 2000)
-    return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    fetchOrders()
+    const interval = setInterval(fetchOrders, 1000) // Faster sync
+    return () => clearInterval(interval)
+  }, [fetchOrders])
 
   const handleToggleSize = (pizzaId: string) => {
     setPizzaSizes((prev) => ({ ...prev, [pizzaId]: !prev[pizzaId] }))
@@ -61,9 +65,9 @@ export default function FrontPage() {
     }))
   }
 
-  const handleOrder = async (type: "pizza" | "side", id: string) => {
-    // Prevent double-clicks
-    if (processingOrders[id]) return
+  const handleOrder = useCallback(async (type: "pizza" | "side", id: string) => {
+    // Prevent double-clicks - check if already ordered
+    if (placedOrders[id]) return
     
     const item = type === "pizza" 
       ? pizzas.find((p) => p.id === id)
@@ -71,7 +75,8 @@ export default function FrontPage() {
     
     if (!item) return
 
-    setProcessingOrders((prev) => ({ ...prev, [id]: true }))
+    // Optimistic UI update - show as ordered immediately
+    setPlacedOrders((prev) => ({ ...prev, [id]: "pending" }))
 
     try {
       const orderItems = [{
@@ -90,36 +95,45 @@ export default function FrontPage() {
       if (data.order) {
         setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
       }
-    } finally {
-      setProcessingOrders((prev) => ({ ...prev, [id]: false }))
+    } catch {
+      // Revert on error
+      setPlacedOrders((prev) => {
+        const updated = { ...prev }
+        delete updated[id]
+        return updated
+      })
     }
-  }
+  }, [placedOrders, pizzaSizes, quantities])
 
-  const handleDelivered = async (orderId: string, itemId: string) => {
-    await fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
+  const handleDelivered = useCallback(async (orderId: string, itemId: string) => {
+    // Optimistic UI - remove immediately
     setPlacedOrders((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
       return updated
     })
-  }
-
-  const handleCancel = async (orderId: string, itemId: string) => {
-    await fetch("/api/orders", {
+    // Fire and forget - don't wait
+    fetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId, status: "completed" }),
     })
+  }, [])
+
+  const handleCancel = useCallback(async (orderId: string, itemId: string) => {
+    // Optimistic UI - remove immediately
     setPlacedOrders((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
       return updated
     })
-  }
+    // Fire and forget - don't wait
+    fetch("/api/orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, status: "completed" }),
+    })
+  }, [])
 
   const handleSirenStart = async () => {
     setIsCallingStaff(true)
@@ -161,39 +175,39 @@ export default function FrontPage() {
             const qty = quantities[item.id] || 1
             
             return (
-              <div key={item.id} className="flex items-center bg-card border border-border rounded-xl p-3">
+              <div key={item.id} className="flex items-center bg-card border-2 border-border rounded-xl p-4 min-h-[72px] touch-manipulation">
                 {/* Left: Name */}
-                <span className="text-base font-bold text-foreground whitespace-nowrap w-32">{item.name}</span>
+                <span className="text-xl font-bold text-foreground whitespace-nowrap w-40">{item.name}</span>
 
                 {/* Center: Quantity + Toggle */}
-                <div className="flex-1 flex items-center justify-center gap-4">
+                <div className="flex-1 flex items-center justify-center gap-6">
                   {/* Quantity Controls */}
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
-                      size="sm"
-                      className="h-10 w-10 p-0"
+                      size="lg"
+                      className="h-14 w-14 p-0 text-2xl touch-manipulation"
                       onClick={() => handleQuantityChange(item.id, -1)}
                       disabled={isOrdered}
                     >
-                      <Minus className="h-4 w-4" />
+                      <Minus className="h-6 w-6" />
                     </Button>
-                    <span className="w-8 text-center font-bold text-lg">{qty}</span>
+                    <span className="w-12 text-center font-bold text-2xl">{qty}</span>
                     <Button
                       variant="outline"
-                      size="sm"
-                      className="h-10 w-10 p-0"
+                      size="lg"
+                      className="h-14 w-14 p-0 text-2xl touch-manipulation"
                       onClick={() => handleQuantityChange(item.id, 1)}
                       disabled={isOrdered}
                     >
-                      <Plus className="h-4 w-4" />
+                      <Plus className="h-6 w-6" />
                     </Button>
                   </div>
                   
                   {isPizza && !('noSizeToggle' in item && item.noSizeToggle) && (
-                    <div className="flex items-center gap-2 select-none">
+                    <div className="flex items-center gap-3 select-none">
                       <span 
-                        className={`text-sm font-semibold cursor-pointer ${!isFullPizza ? "text-primary" : "text-muted-foreground"}`}
+                        className={`text-lg font-bold cursor-pointer px-3 py-2 rounded-lg touch-manipulation ${!isFullPizza ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
                         onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: false }))}
                       >
                         Half
@@ -201,9 +215,10 @@ export default function FrontPage() {
                       <Switch
                         checked={isFullPizza}
                         onCheckedChange={(checked) => setPizzaSizes((prev) => ({ ...prev, [item.id]: checked }))}
+                        className="scale-150"
                       />
                       <span 
-                        className={`text-sm font-semibold cursor-pointer ${isFullPizza ? "text-primary" : "text-muted-foreground"}`}
+                        className={`text-lg font-bold cursor-pointer px-3 py-2 rounded-lg touch-manipulation ${isFullPizza ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
                         onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: true }))}
                       >
                         Full
@@ -213,22 +228,21 @@ export default function FrontPage() {
                 </div>
 
                 {/* Right: Buttons */}
-                <div className="flex gap-2 w-60">
+                <div className="flex gap-3 w-72">
                   {!isOrdered ? (
                     <Button
                       size="lg"
-                      className="h-10 flex-1 text-base font-bold"
+                      className="h-14 flex-1 text-xl font-bold touch-manipulation active:scale-95 transition-transform"
                       onClick={() => handleOrder(item.type, item.id)}
-                      disabled={processingOrders[item.id]}
                     >
-                      {processingOrders[item.id] ? "..." : "Order"}
+                      Order
                     </Button>
                   ) : (
                     <>
                       <Button
                         size="lg"
                         variant="default"
-                        className="bg-green-600 hover:bg-green-700 h-10 flex-1 text-base font-bold"
+                        className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-14 flex-1 text-lg font-bold touch-manipulation active:scale-95 transition-transform"
                         onClick={() => handleDelivered(orderId, item.id)}
                       >
                         Delivered
@@ -236,7 +250,7 @@ export default function FrontPage() {
                       <Button
                         size="lg"
                         variant="destructive"
-                        className="h-10 flex-1 text-base font-bold"
+                        className="h-14 flex-1 text-lg font-bold touch-manipulation active:scale-95 transition-transform"
                         onClick={() => handleCancel(orderId, item.id)}
                       >
                         Cancel
@@ -250,14 +264,14 @@ export default function FrontPage() {
         </div>
 
         {/* Call Staff Button - Hold to activate siren */}
-        <div className="flex justify-center mt-4">
+        <div className="flex justify-center mt-6">
           <Button
             size="lg"
             variant="destructive"
-            className={`h-24 px-40 text-3xl font-bold select-none transition-all duration-150 ${
+            className={`h-20 px-24 text-2xl font-bold select-none touch-manipulation transition-all duration-100 ${
               isCallingStaff 
                 ? "bg-red-800 scale-95 ring-4 ring-red-400 animate-pulse" 
-                : "bg-red-600 hover:bg-red-700"
+                : "bg-red-600 hover:bg-red-700 active:bg-red-800"
             }`}
             onMouseDown={handleSirenStart}
             onMouseUp={handleSirenStop}
@@ -265,7 +279,7 @@ export default function FrontPage() {
             onTouchStart={handleSirenStart}
             onTouchEnd={handleSirenStop}
           >
-            {isCallingStaff ? "Calling Staff..." : "Hold to Call Staff"}
+            {isCallingStaff ? "CALLING STAFF..." : "HOLD TO CALL STAFF"}
           </Button>
         </div>
       </div>

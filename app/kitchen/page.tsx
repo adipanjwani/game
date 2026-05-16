@@ -9,28 +9,80 @@ export default function KitchenPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [sirenActive, setSirenActive] = useState(false)
   const [currentTime, setCurrentTime] = useState(Date.now())
+  const [newOrderIds, setNewOrderIds] = useState<Set<string>>(new Set())
+  const previousOrderIdsRef = useRef<Set<string>>(new Set())
   
   const DELIVERY_TIME_LIMIT = 10 * 60 * 1000 // 10 minutes in milliseconds
   const audioContextRef = useRef<AudioContext | null>(null)
   const buzzerIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const notificationAudioRef = useRef<AudioContext | null>(null)
+
+  // Play loud notification for new orders
+  const playNewOrderSound = useCallback(() => {
+    if (!notificationAudioRef.current) {
+      notificationAudioRef.current = new AudioContext()
+    }
+    const ctx = notificationAudioRef.current
+    
+    const playTone = (freq: number, startTime: number, duration: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = "sine"
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(1.0, startTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(startTime)
+      osc.stop(startTime + duration)
+    }
+    
+    const now = ctx.currentTime
+    // Loud ascending chime played twice
+    playTone(880, now, 0.15)
+    playTone(1100, now + 0.15, 0.15)
+    playTone(1320, now + 0.3, 0.3)
+    playTone(880, now + 0.7, 0.15)
+    playTone(1100, now + 0.85, 0.15)
+    playTone(1320, now + 1.0, 0.3)
+  }, [])
 
   const fetchOrders = useCallback(async () => {
     try {
       const response = await fetch("/api/orders")
       if (response.ok) {
         const data = await response.json()
-        setOrders(data.orders || [])
+        const newOrders: Order[] = data.orders || []
+        
+        // Check for new orders
+        const currentIds = new Set(newOrders.map((o: Order) => o.id))
+        const newIds: string[] = []
+        
+        currentIds.forEach((id) => {
+          if (!previousOrderIdsRef.current.has(id)) {
+            newIds.push(id)
+          }
+        })
+        
+        if (newIds.length > 0 && previousOrderIdsRef.current.size > 0) {
+          playNewOrderSound()
+          setNewOrderIds(new Set(newIds))
+          setTimeout(() => setNewOrderIds(new Set()), 2000)
+        }
+        
+        previousOrderIdsRef.current = currentIds
+        setOrders(newOrders)
       }
-    } catch (error) {
-      // Silently ignore to prevent console spam
+    } catch {
+      // Silently ignore
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [playNewOrderSound])
 
   useEffect(() => {
     fetchOrders()
-    const interval = setInterval(fetchOrders, 2000)
+    const interval = setInterval(fetchOrders, 800) // Faster polling for kitchen
     return () => clearInterval(interval)
   }, [fetchOrders])
 
@@ -42,7 +94,7 @@ export default function KitchenPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Poll for siren status
+  // Poll for siren status - fast for responsiveness
   useEffect(() => {
     let isMounted = true
     const checkSiren = async () => {
@@ -52,12 +104,12 @@ export default function KitchenPage() {
           const data = await res.json()
           setSirenActive(data.active)
         }
-      } catch (error) {
-        // Silently ignore fetch errors to prevent console spam
+      } catch {
+        // Silently ignore
       }
     }
     checkSiren()
-    const interval = setInterval(checkSiren, 500)
+    const interval = setInterval(checkSiren, 300) // Faster for responsiveness
     return () => {
       isMounted = false
       clearInterval(interval)
@@ -175,13 +227,16 @@ export default function KitchenPage() {
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-fr">
           {activeOrders.map((order) => {
             const overdue = isOverdue(order.createdAt)
+            const isNew = newOrderIds.has(order.id)
             return (
             <div
               key={order.id}
-              className={`border-4 rounded-2xl p-8 min-h-[250px] flex flex-col ${
+              className={`border-4 rounded-2xl p-8 min-h-[250px] flex flex-col transition-all ${
                 overdue 
-                  ? "bg-red-500/20 border-red-500 animate-pulse" 
-                  : "bg-card border-border"
+                  ? "bg-red-500/30 border-red-500 animate-pulse" 
+                  : isNew
+                    ? "bg-green-500/30 border-green-500 animate-pulse ring-4 ring-green-400"
+                    : "bg-card border-border"
               }`}
             >
               {/* Timer */}
