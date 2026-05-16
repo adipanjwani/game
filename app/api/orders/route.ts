@@ -82,12 +82,18 @@ export async function DELETE(request: NextRequest) {
   const action = searchParams.get("action")
 
   if (action === "clear-completed") {
-    // Remove completed orders in place (can't reassign const)
     for (let i = orders.length - 1; i >= 0; i--) {
       if (orders[i].status === "completed") {
         orders.splice(i, 1)
       }
     }
+    broadcastOrderUpdate()
+    return NextResponse.json({ success: true })
+  }
+
+  if (action === "clear-all") {
+    orders.splice(0, orders.length)
+    broadcastOrderUpdate()
     return NextResponse.json({ success: true })
   }
 
