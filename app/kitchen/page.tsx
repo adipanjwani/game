@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Order } from "@/lib/pizza-data"
-import { Pizza, AlertTriangle, Monitor } from "lucide-react"
+import { Pizza, AlertTriangle, Monitor, Volume2, VolumeX } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
@@ -16,18 +16,41 @@ export default function KitchenPage() {
   const audioContextRef = useRef<AudioContext | null>(null)
   const oscillatorRef = useRef<OscillatorNode | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
+  const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const [audioEnabled, setAudioEnabled] = useState(false)
   
-  // Initialize audio context on user interaction
+  // Initialize AudioContext on any user interaction with the page
+  useEffect(() => {
+    const initAudio = async () => {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext()
+      }
+      if (audioContextRef.current.state === "suspended") {
+        await audioContextRef.current.resume()
+      }
+      if (audioContextRef.current.state === "running" && !audioEnabled) {
+        setAudioEnabled(true)
+      }
+    }
+    
+    document.addEventListener("click", initAudio)
+    document.addEventListener("touchstart", initAudio)
+    
+    return () => {
+      document.removeEventListener("click", initAudio)
+      document.removeEventListener("touchstart", initAudio)
+    }
+  }, [audioEnabled])
+  
+  // Explicit enable audio with a test beep
   const enableAudio = useCallback(async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new AudioContext()
     }
-    // Resume context if suspended (required by browsers)
     if (audioContextRef.current.state === "suspended") {
       await audioContextRef.current.resume()
     }
-    // Play a test beep to confirm audio works
+    // Play a test beep to confirm
     const ctx = audioContextRef.current
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
@@ -39,18 +62,12 @@ export default function KitchenPage() {
     gain.connect(ctx.destination)
     osc.start()
     osc.stop(ctx.currentTime + 0.2)
-    
     setAudioEnabled(true)
-    console.log("[v0] Audio enabled, context state:", audioContextRef.current.state)
   }, [])
   
   // Play notification sound for new orders
   const playNotificationSound = useCallback(() => {
-    console.log("[v0] playNotificationSound called, audioContext:", audioContextRef.current?.state)
-    if (!audioContextRef.current) {
-      console.log("[v0] No audio context, skipping notification sound")
-      return
-    }
+    if (!audioContextRef.current || audioContextRef.current.state !== "running") return
     try {
       const ctx = audioContextRef.current
       const oscillator = ctx.createOscillator()
@@ -69,7 +86,6 @@ export default function KitchenPage() {
       
       oscillator.start(ctx.currentTime)
       oscillator.stop(ctx.currentTime + 0.4)
-      console.log("[v0] Notification sound played")
     } catch (error) {
       console.error("[v0] Error playing notification:", error)
     }
@@ -82,51 +98,38 @@ export default function KitchenPage() {
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
       
-      // Ignore heartbeats - they just keep connection alive
-      if (data.type === "heartbeat") {
-        return
-      }
+      if (data.type === "heartbeat") return
       
       if (data.type === "state_update" && data.state) {
         const serverOrders: Order[] = data.state.orders
         
         setOrders((prevOrders) => {
-          // Compare to see if there are actual changes
           const prevIds = new Set(prevOrders.map(o => o.id))
           const serverIds = new Set(serverOrders.map(o => o.id))
           
-          // Check for new orders
           const newOrderIds = serverOrders.filter(o => !prevIds.has(o.id))
           if (newOrderIds.length > 0 && prevOrders.length > 0) {
             playNotificationSound()
           }
           
-          // Check for status changes
           const prevStatusMap = new Map(prevOrders.map(o => [o.id, o.status]))
           const hasStatusChange = serverOrders.some(o => prevStatusMap.get(o.id) !== o.status)
-          
-          // Check for removed orders
           const hasRemovedOrders = prevOrders.some(o => !serverIds.has(o.id))
           
-          // Only update if there are actual changes
           if (newOrderIds.length > 0 || hasStatusChange || hasRemovedOrders) {
             return serverOrders
           }
-          
-          // No changes, keep existing reference
           return prevOrders
         })
         setIsLoading(false)
       }
       
-      // Handle siren updates via SSE
       if (data.type === "siren_update") {
         setSirenActive(data.active)
       }
     }
     
     eventSource.onerror = () => {
-      // Reconnect on error - EventSource handles this automatically
       setIsLoading(false)
     }
     
@@ -134,6 +137,19 @@ export default function KitchenPage() {
       eventSource.close()
     }
   }, [playNotificationSound])
+
+  // Also poll siren as fallback (SSE siren may not always arrive)
+  useEffect(() => {
+    const checkSiren = async () => {
+      try {
+        const res = await fetch("/api/siren")
+        const data = await res.json()
+        setSirenActive(data.active)
+      } catch {}
+    }
+    const interval = setInterval(checkSiren, 300)
+    return () => clearInterval(interval)
+  }, [])
 
   // Update current time every second for timer calculations
   useEffect(() => {
@@ -143,17 +159,10 @@ export default function KitchenPage() {
     return () => clearInterval(interval)
   }, [])
 
-
-
   // Play siren sound when active
   useEffect(() => {
-    console.log("[v0] Siren effect, sirenActive:", sirenActive, "audioContext:", audioContextRef.current?.state)
-    if (!audioContextRef.current) {
-      console.log("[v0] No audio context for siren")
-      return
-    }
-    
     if (sirenActive) {
+      if (!audioContextRef.current || audioContextRef.current.state !== "running") return
       const ctx = audioContextRef.current
       
       if (!oscillatorRef.current) {
@@ -181,15 +190,14 @@ export default function KitchenPage() {
           }
         }
         modulate()
-        const sirenInterval = setInterval(modulate, 1000)
-        ;(oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }).sirenInterval = sirenInterval
+        sirenIntervalRef.current = setInterval(modulate, 1000)
       }
     } else {
+      if (sirenIntervalRef.current) {
+        clearInterval(sirenIntervalRef.current)
+        sirenIntervalRef.current = null
+      }
       if (oscillatorRef.current) {
-        const osc = oscillatorRef.current as OscillatorNode & { sirenInterval?: NodeJS.Timeout }
-        if (osc.sirenInterval) {
-          clearInterval(osc.sirenInterval)
-        }
         try {
           oscillatorRef.current.stop()
         } catch {}
@@ -197,7 +205,7 @@ export default function KitchenPage() {
         gainNodeRef.current = null
       }
     }
-  }, [sirenActive])
+  }, [sirenActive, audioEnabled])
 
   const activeOrders = orders
     .filter((o) => o.status === "pending" || o.status === "preparing")
@@ -247,10 +255,16 @@ export default function KitchenPage() {
             <h1 className="text-lg md:text-xl lg:text-2xl font-bold text-foreground">Kitchen Display</h1>
           </div>
           <div className="flex items-center gap-2">
-            {!audioEnabled && (
-              <Button size="sm" variant="outline" onClick={enableAudio} className="text-xs">
-                Enable Sound
+            {!audioEnabled ? (
+              <Button size="sm" variant="destructive" onClick={enableAudio} className="text-xs gap-1 animate-pulse">
+                <VolumeX className="h-3.5 w-3.5" />
+                Tap to Enable Sound
               </Button>
+            ) : (
+              <span className="text-xs text-green-500 flex items-center gap-1">
+                <Volume2 className="h-3.5 w-3.5" />
+                Sound On
+              </span>
             )}
             <Button asChild size="sm" className="text-xs md:text-sm">
               <Link href="/">
