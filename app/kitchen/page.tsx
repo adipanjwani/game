@@ -19,10 +19,10 @@ export default function KitchenPage() {
       const response = await fetch("/api/orders")
       if (response.ok) {
         const data = await response.json()
-        setOrders(data.orders)
+        setOrders(data.orders || [])
       }
     } catch (error) {
-      console.error("[v0] Error fetching orders:", error)
+      // Silently ignore to prevent console spam
     } finally {
       setIsLoading(false)
     }
@@ -44,50 +44,65 @@ export default function KitchenPage() {
 
   // Poll for siren status
   useEffect(() => {
+    let isMounted = true
     const checkSiren = async () => {
       try {
         const res = await fetch("/api/siren")
-        const data = await res.json()
-        setSirenActive(data.active)
+        if (isMounted && res.ok) {
+          const data = await res.json()
+          setSirenActive(data.active)
+        }
       } catch (error) {
-        console.error("[v0] Error checking siren:", error)
+        // Silently ignore fetch errors to prevent console spam
       }
     }
     checkSiren()
-    const interval = setInterval(checkSiren, 200)
-    return () => clearInterval(interval)
+    const interval = setInterval(checkSiren, 500)
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+    }
   }, [])
 
   // Play buzzer beeping sound when Call Staff is active
   useEffect(() => {
-    const playBeep = () => {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext()
-      }
-      const ctx = audioContextRef.current
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      
-      osc.type = "square"
-      osc.frequency.value = 800
-      gain.gain.setValueAtTime(1.0, ctx.currentTime)
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15)
-      
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start()
-      osc.stop(ctx.currentTime + 0.15)
-    }
-
-    if (sirenActive) {
-      playBeep()
-      buzzerIntervalRef.current = setInterval(playBeep, 300)
-    } else {
+    if (!sirenActive) {
       if (buzzerIntervalRef.current) {
         clearInterval(buzzerIntervalRef.current)
         buzzerIntervalRef.current = null
       }
+      return
     }
+
+    // Create audio context once
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContext()
+    }
+    
+    const playBeep = () => {
+      const ctx = audioContextRef.current
+      if (!ctx) return
+      
+      try {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        
+        osc.type = "square"
+        osc.frequency.value = 800
+        gain.gain.setValueAtTime(1.0, ctx.currentTime)
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15)
+        
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.start()
+        osc.stop(ctx.currentTime + 0.15)
+      } catch (e) {
+        // Ignore audio errors
+      }
+    }
+
+    playBeep()
+    buzzerIntervalRef.current = setInterval(playBeep, 400)
     
     return () => {
       if (buzzerIntervalRef.current) {

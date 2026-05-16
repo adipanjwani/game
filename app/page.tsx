@@ -21,6 +21,7 @@ export default function FrontPage() {
   })
   const [placedOrders, setPlacedOrders] = useState<Record<string, string>>({})
   const [isCallingStaff, setIsCallingStaff] = useState(false)
+  const [processingOrders, setProcessingOrders] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -61,27 +62,36 @@ export default function FrontPage() {
   }
 
   const handleOrder = async (type: "pizza" | "side", id: string) => {
+    // Prevent double-clicks
+    if (processingOrders[id]) return
+    
     const item = type === "pizza" 
       ? pizzas.find((p) => p.id === id)
       : sides.find((s) => s.id === id)
     
     if (!item) return
 
-    const orderItems = [{
-      ...(type === "pizza" ? { pizza: item } : { side: item }),
-      isFullPizza: type === "pizza" ? pizzaSizes[id] : false,
-      quantity: quantities[id] || 1,
-    }]
+    setProcessingOrders((prev) => ({ ...prev, [id]: true }))
 
-    const res = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items: orderItems }),
-    })
-    
-    const data = await res.json()
-    if (data.order) {
-      setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
+    try {
+      const orderItems = [{
+        ...(type === "pizza" ? { pizza: item } : { side: item }),
+        isFullPizza: type === "pizza" ? pizzaSizes[id] : false,
+        quantity: quantities[id] || 1,
+      }]
+
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: orderItems }),
+      })
+      
+      const data = await res.json()
+      if (data.order) {
+        setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
+      }
+    } finally {
+      setProcessingOrders((prev) => ({ ...prev, [id]: false }))
     }
   }
 
@@ -209,8 +219,9 @@ export default function FrontPage() {
                       size="lg"
                       className="h-10 flex-1 text-base font-bold"
                       onClick={() => handleOrder(item.type, item.id)}
+                      disabled={processingOrders[item.id]}
                     >
-                      Order
+                      {processingOrders[item.id] ? "..." : "Order"}
                     </Button>
                   ) : (
                     <>
