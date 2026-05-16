@@ -1,12 +1,5 @@
 import { NextResponse } from "next/server"
-
-// Store connected clients
-const globalForSSE = globalThis as unknown as { 
-  clients: Set<ReadableStreamDefaultController>
-}
-if (!globalForSSE.clients) {
-  globalForSSE.clients = new Set()
-}
+import { addClient, removeClient, sendStateToClient } from "@/lib/store"
 
 export const dynamic = 'force-dynamic'
 
@@ -17,25 +10,25 @@ export async function GET() {
   const stream = new ReadableStream({
     start(controller) {
       controllerRef = controller
-      globalForSSE.clients.add(controller)
+      addClient(controller)
       
-      // Send initial connection message
-      controller.enqueue(`data: {"type":"connected"}\n\n`)
+      // Send current state immediately on connect
+      sendStateToClient(controller)
       
-      // Keep connection alive with heartbeat every 30s
+      // Keep connection alive with heartbeat every 25s
       heartbeatInterval = setInterval(() => {
         try {
           controller.enqueue(`data: {"type":"heartbeat"}\n\n`)
         } catch {
           if (heartbeatInterval) clearInterval(heartbeatInterval)
-          globalForSSE.clients.delete(controller)
+          if (controllerRef) removeClient(controllerRef)
         }
-      }, 30000)
+      }, 25000)
     },
     cancel() {
       // Client disconnected - clean up
       if (heartbeatInterval) clearInterval(heartbeatInterval)
-      if (controllerRef) globalForSSE.clients.delete(controllerRef)
+      if (controllerRef) removeClient(controllerRef)
     }
   })
 
@@ -45,17 +38,5 @@ export async function GET() {
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
     },
-  })
-}
-
-// Function to broadcast updates to all connected clients
-export function broadcastOrderUpdate() {
-  const message = `data: {"type":"orders_updated"}\n\n`
-  globalForSSE.clients.forEach((controller) => {
-    try {
-      controller.enqueue(message)
-    } catch {
-      globalForSSE.clients.delete(controller)
-    }
   })
 }

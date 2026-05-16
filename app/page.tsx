@@ -49,95 +49,60 @@ export default function FrontPage() {
     return currentTime - orderTime > DELIVERY_TIME_LIMIT
   }
 
-  const fetchOrders = async () => {
-    const res = await fetch("/api/orders")
-    const data = await res.json()
-    const serverOrders: Order[] = data.orders
+  // Process state update from centralized store
+  const processStateUpdate = (serverOrders: Order[]) => {
     const cooking = serverOrders.filter(
       (o: Order) => o.status === "pending" || o.status === "preparing"
     )
     
-    // Merge orders instead of replacing - add new, remove completed
-    setActiveOrders((prevOrders) => {
-      const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
-      const serverActiveIds = new Set(cooking.map(o => o.id))
-      
-      const mergedOrders: Order[] = []
-      
-      // Add/update orders from server
-      for (const serverOrder of cooking) {
-        const existingOrder = prevOrderMap.get(serverOrder.id)
-        if (existingOrder && existingOrder.status === serverOrder.status) {
-          // Keep existing reference to prevent re-render
-          mergedOrders.push(existingOrder)
-        } else {
-          mergedOrders.push(serverOrder)
+    setActiveOrders(cooking)
+    
+    // Update placedOrders from server state
+    const newPlacedOrders: Record<string, string> = {}
+    cooking.forEach((order: Order) => {
+      order.items.forEach((item) => {
+        const itemId = item.pizza?.id || item.side?.id
+        if (itemId) {
+          newPlacedOrders[itemId] = order.id
         }
-      }
-      
-      return mergedOrders
-    })
-    
-    // Update placedOrders and orderTimes incrementally
-    setPlacedOrders((prev) => {
-      const newPlacedOrders: Record<string, string> = {}
-      cooking.forEach((order: Order) => {
-        order.items.forEach((item) => {
-          const itemId = item.pizza?.id || item.side?.id
-          if (itemId) {
-            newPlacedOrders[itemId] = order.id
-          }
-        })
       })
-      // Only update if changed
-      const prevKeys = Object.keys(prev).sort().join(',')
-      const newKeys = Object.keys(newPlacedOrders).sort().join(',')
-      if (prevKeys !== newKeys) {
-        return newPlacedOrders
-      }
-      return prev
     })
+    setPlacedOrders(newPlacedOrders)
     
+    // Update orderTimes from server state (use server createdAt)
     setOrderTimes((prev) => {
       const newOrderTimes: Record<string, number> = {}
       cooking.forEach((order: Order) => {
         order.items.forEach((item) => {
           const itemId = item.pizza?.id || item.side?.id
           if (itemId) {
-            // Keep existing time if we already have it
-            newOrderTimes[itemId] = prev[itemId] || new Date(order.createdAt).getTime()
+            // Use server time for consistency across devices
+            newOrderTimes[itemId] = new Date(order.createdAt).getTime()
           }
         })
       })
-      // Only update if keys changed
-      const prevKeys = Object.keys(prev).sort().join(',')
-      const newKeys = Object.keys(newOrderTimes).sort().join(',')
-      if (prevKeys !== newKeys) {
-        return newOrderTimes
-      }
-      return prev
+      return newOrderTimes
     })
   }
 
-  // Initial fetch and SSE for real-time updates
+  // SSE for real-time state updates from centralized store
   useEffect(() => {
-    fetchOrders()
-    
-    // Connect to SSE for instant updates
     const eventSource = new EventSource("/api/orders/stream")
+    
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
-      if (data.type === "orders_updated") {
-        fetchOrders()
+      
+      if (data.type === "state_update" && data.state) {
+        processStateUpdate(data.state.orders)
       }
     }
     
-    // Fallback polling every 5s in case SSE disconnects
-    const interval = setInterval(fetchOrders, 5000)
+    eventSource.onerror = () => {
+      // EventSource handles reconnection automatically
+    }
     
     return () => {
       eventSource.close()
-      clearInterval(interval)
     }
   }, [])
 
@@ -159,31 +124,26 @@ export default function FrontPage() {
     
     if (!item) return
 
+    // Optimistic update
+    setPlacedOrders((prev) => ({ ...prev, [id]: "pending" }))
+    setOrderTimes((prev) => ({ ...prev, [id]: Date.now() }))
+
     const orderItems = [{
       ...(type === "pizza" ? { pizza: item } : { side: item }),
       isFullPizza: type === "pizza" ? pizzaSizes[id] : false,
       quantity: quantities[id] || 1,
     }]
 
-    const res = await fetch("/api/orders", {
+    await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: orderItems }),
     })
-    
-    const data = await res.json()
-    if (data.order) {
-      setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
-      setOrderTimes((prev) => ({ ...prev, [id]: Date.now() }))
-    }
+    // SSE will sync the actual order ID
   }
 
   const handleDelivered = async (orderId: string, itemId: string) => {
-    await fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
+    // Optimistic update
     setPlacedOrders((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
@@ -194,14 +154,17 @@ export default function FrontPage() {
       delete updated[itemId]
       return updated
     })
+    
+    await fetch("/api/orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, status: "completed" }),
+    })
+    // SSE will confirm the update
   }
 
   const handleCancel = async (orderId: string, itemId: string) => {
-    await fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
+    // Optimistic update
     setPlacedOrders((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
@@ -212,6 +175,13 @@ export default function FrontPage() {
       delete updated[itemId]
       return updated
     })
+    
+    await fetch("/api/orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, status: "completed" }),
+    })
+    // SSE will confirm the update
   }
 
   const handleSirenStart = async () => {

@@ -42,79 +42,42 @@ export default function KitchenPage() {
     }
   }, [])
 
-  const fetchOrders = useCallback(async () => {
-    try {
-      const response = await fetch("/api/orders")
-      if (response.ok) {
-        const data = await response.json()
-        const serverOrders: Order[] = data.orders
+  // SSE for real-time state updates from centralized store
+  useEffect(() => {
+    const eventSource = new EventSource("/api/orders/stream")
+    
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      
+      if (data.type === "state_update" && data.state) {
+        const serverOrders: Order[] = data.state.orders
         
         setOrders((prevOrders) => {
-          // Create a map of existing orders by ID for quick lookup
           const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
-          const serverOrderMap = new Map(serverOrders.map(o => [o.id, o]))
-          
-          // Check if new active orders were added for notification
           const prevActive = prevOrders.filter((o) => o.status === "pending" || o.status === "preparing")
           const newActive = serverOrders.filter((o) => o.status === "pending" || o.status === "preparing")
           
-          // Find truly new orders (not just updated ones)
+          // Play sound for truly new orders
           const newOrderIds = newActive.filter(o => !prevOrderMap.has(o.id))
-          if (newOrderIds.length > 0) {
+          if (newOrderIds.length > 0 && prevOrders.length > 0) {
             playNotificationSound()
           }
           
-          // Merge: keep existing orders, update changed ones, add new ones, remove deleted ones
-          const mergedOrders: Order[] = []
-          
-          // Add/update orders from server
-          for (const serverOrder of serverOrders) {
-            const existingOrder = prevOrderMap.get(serverOrder.id)
-            if (existingOrder) {
-              // Update existing order if status changed
-              if (existingOrder.status !== serverOrder.status) {
-                mergedOrders.push(serverOrder)
-              } else {
-                // Keep existing reference to prevent re-render
-                mergedOrders.push(existingOrder)
-              }
-            } else {
-              // New order
-              mergedOrders.push(serverOrder)
-            }
-          }
-          
-          return mergedOrders
+          return serverOrders
         })
+        setIsLoading(false)
       }
-    } catch (error) {
-      console.error("[v0] Error fetching orders:", error)
-    } finally {
+    }
+    
+    eventSource.onerror = () => {
+      // Reconnect on error - EventSource handles this automatically
       setIsLoading(false)
     }
-  }, [playNotificationSound])
-
-  // Initial fetch and SSE for real-time updates
-  useEffect(() => {
-    fetchOrders()
-    
-    // Connect to SSE for instant updates
-    const eventSource = new EventSource("/api/orders/stream")
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      if (data.type === "orders_updated") {
-        fetchOrders()
-      }
-    }
-    
-    // Fallback polling every 5s in case SSE disconnects
-    const interval = setInterval(fetchOrders, 5000)
     
     return () => {
       eventSource.close()
-      clearInterval(interval)
     }
-  }, [fetchOrders])
+  }, [playNotificationSound])
 
   // Update current time every second for timer calculations
   useEffect(() => {
