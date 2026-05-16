@@ -133,7 +133,9 @@ export default function KitchenPage() {
     }
   }, [sirenActive])
 
-  const activeOrders = orders.filter((o) => o.status === "pending" || o.status === "preparing")
+  const activeOrders = orders
+    .filter((o) => o.status === "pending" || o.status === "preparing")
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
 
   const isOverdue = (createdAt: string) => {
     const orderTime = new Date(createdAt).getTime()

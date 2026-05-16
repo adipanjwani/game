@@ -22,7 +22,32 @@ export default function FrontPage() {
   })
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [placedOrders, setPlacedOrders] = useState<Record<string, string>>({})
+  const [orderTimes, setOrderTimes] = useState<Record<string, number>>({}) // Track when each item was ordered
+  const [currentTime, setCurrentTime] = useState(Date.now())
   const [isCallingStaff, setIsCallingStaff] = useState(false)
+  
+  const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
+  
+  // Update current time every second for countdown
+  useEffect(() => {
+    const interval = setInterval(() => setCurrentTime(Date.now()), 1000)
+    return () => clearInterval(interval)
+  }, [])
+  
+  // Get time remaining for delivery
+  const getTimeRemaining = (orderTime: number) => {
+    const elapsed = currentTime - orderTime
+    const remaining = DELIVERY_TIME_LIMIT - elapsed
+    const absRemaining = Math.abs(remaining)
+    const minutes = Math.floor(absRemaining / 60000)
+    const seconds = Math.floor((absRemaining % 60000) / 1000)
+    const timeStr = `${minutes}:${seconds.toString().padStart(2, "0")}`
+    return remaining < 0 ? `-${timeStr}` : timeStr
+  }
+  
+  const isOverdue = (orderTime: number) => {
+    return currentTime - orderTime > DELIVERY_TIME_LIMIT
+  }
 
   const fetchOrders = async () => {
     const res = await fetch("/api/orders")
@@ -32,16 +57,23 @@ export default function FrontPage() {
     )
     setActiveOrders(cooking)
     
-    setPlacedOrders((prev) => {
-      const activeOrderIds = new Set(cooking.map((o: Order) => o.id))
-      const updated: Record<string, string> = {}
-      for (const [itemId, orderId] of Object.entries(prev)) {
-        if (activeOrderIds.has(orderId)) {
-          updated[itemId] = orderId
+    // Always rebuild placedOrders and orderTimes from server data
+    // This ensures all devices show the same state
+    const newPlacedOrders: Record<string, string> = {}
+    const newOrderTimes: Record<string, number> = {}
+    
+    cooking.forEach((order: Order) => {
+      order.items.forEach((item) => {
+        const itemId = item.pizza?.id || item.side?.id
+        if (itemId) {
+          newPlacedOrders[itemId] = order.id
+          newOrderTimes[itemId] = new Date(order.createdAt).getTime()
         }
-      }
-      return updated
+      })
     })
+    
+    setPlacedOrders(newPlacedOrders)
+    setOrderTimes(newOrderTimes)
   }
 
   // Initial fetch and SSE for real-time updates
@@ -99,6 +131,7 @@ export default function FrontPage() {
     const data = await res.json()
     if (data.order) {
       setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
+      setOrderTimes((prev) => ({ ...prev, [id]: Date.now() }))
     }
   }
 
@@ -113,6 +146,11 @@ export default function FrontPage() {
       delete updated[itemId]
       return updated
     })
+    setOrderTimes((prev) => {
+      const updated = { ...prev }
+      delete updated[itemId]
+      return updated
+    })
   }
 
   const handleCancel = async (orderId: string, itemId: string) => {
@@ -122,6 +160,11 @@ export default function FrontPage() {
       body: JSON.stringify({ orderId, status: "completed" }),
     })
     setPlacedOrders((prev) => {
+      const updated = { ...prev }
+      delete updated[itemId]
+      return updated
+    })
+    setOrderTimes((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
       return updated
@@ -152,7 +195,7 @@ export default function FrontPage() {
   ]
 
   return (
-    <div className="h-dvh bg-background p-2 md:p-3 lg:p-4 flex flex-col lg:flex-row gap-2 md:gap-3 lg:gap-4 overflow-hidden">
+    <div className="h-dvh bg-background p-2 md:p-3 lg:p-4 flex flex-col gap-2 md:gap-3 lg:gap-4 overflow-hidden">
       {/* Menu Panel */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <header className="flex items-center justify-between mb-2 md:mb-3 shrink-0">
@@ -226,38 +269,47 @@ export default function FrontPage() {
                   )}
                 </div>
 
-                {/* Right: Buttons */}
-                <div className="flex gap-1 md:gap-1.5 lg:gap-2 w-20 md:w-32 lg:w-52 shrink-0">
-                  {!isOrdered ? (
-                    <Button
-                      size="sm"
-                      className="h-7 md:h-9 lg:h-12 flex-1 text-xs md:text-sm lg:text-base font-bold touch-manipulation active:scale-95 transition-transform"
-                      onClick={() => handleOrder(item.type, item.id)}
-                    >
-                      Order
-                    </Button>
-                  ) : (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="default"
-                        className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-7 md:h-9 lg:h-12 flex-1 text-[10px] md:text-xs lg:text-sm font-bold touch-manipulation active:scale-95 transition-transform"
-                        onClick={() => handleDelivered(orderId, item.id)}
-                      >
-                        <span className="hidden md:inline">Delivered</span>
-                        <Check className="h-4 w-4 md:hidden" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="h-7 md:h-9 lg:h-12 flex-1 text-[10px] md:text-xs lg:text-sm font-bold touch-manipulation active:scale-95 transition-transform"
-                        onClick={() => handleCancel(orderId, item.id)}
-                      >
-                        <span className="hidden md:inline">Cancel</span>
-                        <X className="h-4 w-4 md:hidden" />
-                      </Button>
-                    </>
+                {/* Right: Timer + Buttons */}
+                <div className="flex items-center gap-1 md:gap-2 shrink-0">
+                  {isOrdered && orderTimes[item.id] && (
+                    <span className={`text-xs md:text-sm lg:text-base font-mono font-bold w-12 md:w-14 lg:w-16 text-right ${
+                      isOverdue(orderTimes[item.id]) ? "text-red-500" : "text-primary"
+                    }`}>
+                      {getTimeRemaining(orderTimes[item.id])}
+                    </span>
                   )}
+                  <div className="flex gap-1 md:gap-1.5 lg:gap-2 w-20 md:w-32 lg:w-44">
+                    {!isOrdered ? (
+                      <Button
+                        size="sm"
+                        className="h-7 md:h-9 lg:h-12 flex-1 text-xs md:text-sm lg:text-base font-bold touch-manipulation active:scale-95 transition-transform"
+                        onClick={() => handleOrder(item.type, item.id)}
+                      >
+                        Order
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="default"
+                          className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-7 md:h-9 lg:h-12 flex-1 text-[10px] md:text-xs lg:text-sm font-bold touch-manipulation active:scale-95 transition-transform"
+                          onClick={() => handleDelivered(orderId, item.id)}
+                        >
+                          <span className="hidden md:inline">Delivered</span>
+                          <Check className="h-4 w-4 md:hidden" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="h-7 md:h-9 lg:h-12 flex-1 text-[10px] md:text-xs lg:text-sm font-bold touch-manipulation active:scale-95 transition-transform"
+                          onClick={() => handleCancel(orderId, item.id)}
+                        >
+                          <span className="hidden md:inline">Cancel</span>
+                          <X className="h-4 w-4 md:hidden" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             )
@@ -285,53 +337,7 @@ export default function FrontPage() {
         </div>
       </div>
 
-      {/* Cooking Panel - Hidden on mobile, shown on larger screens */}
-      <div className="hidden lg:flex w-64 bg-card border border-border rounded-lg p-3 flex-col min-h-0 overflow-hidden shrink-0">
-        <h2 className="text-base font-bold text-foreground mb-2 flex items-center gap-2 shrink-0">
-          <ChefHat className="h-5 w-5 text-primary" />
-          Now Cooking
-        </h2>
-        <div className="flex-1 overflow-y-auto space-y-2">
-          {activeOrders.length === 0 ? (
-            <p className="text-muted-foreground text-sm text-center py-4">
-              No orders cooking
-            </p>
-          ) : (
-            activeOrders.map((order) => (
-              <div
-                key={order.id}
-                className="bg-muted/50 rounded-md p-2 border border-border"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-muted-foreground font-medium">
-                    #{order.id.slice(-4)}
-                  </span>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                      order.status === "preparing"
-                        ? "bg-primary/20 text-primary"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {order.status === "preparing" ? "Cooking" : "Queued"}
-                  </span>
-                </div>
-                {order.items.map((item, idx) => (
-                  <div key={idx} className="text-sm font-semibold text-foreground">
-                    {item.pizza ? (
-                      <span>
-                        {item.quantity > 1 && `${item.quantity}x `}{item.pizza.name} ({item.isFullPizza ? "Full" : "Half"})
-                      </span>
-                    ) : item.side ? (
-                      <span>{item.quantity > 1 && `${item.quantity}x `}{item.side.name}</span>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+
     </div>
   )
 }
