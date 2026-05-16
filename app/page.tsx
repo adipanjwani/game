@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { pizzas, sides, Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -21,10 +21,6 @@ export default function FrontPage() {
   })
   const [placedOrders, setPlacedOrders] = useState<Record<string, string>>({})
   const [isCallingStaff, setIsCallingStaff] = useState(false)
-  
-  const buzzerContextRef = useRef<AudioContext | null>(null)
-  const buzzerIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const orderSoundRef = useRef<AudioContext | null>(null)
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -64,55 +60,6 @@ export default function FrontPage() {
     }))
   }
 
-  const playOrderSound = () => {
-    if (!orderSoundRef.current) {
-      orderSoundRef.current = new AudioContext()
-    }
-    const ctx = orderSoundRef.current
-    
-    const playTone = (freq: number, startTime: number, duration: number) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = "sine"
-      osc.frequency.value = freq
-      gain.gain.setValueAtTime(1.0, startTime)
-      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start(startTime)
-      osc.stop(startTime + duration)
-    }
-    
-    const now = ctx.currentTime
-    playTone(523, now, 0.1)        // C5
-    playTone(659, now + 0.1, 0.1)  // E5
-    playTone(784, now + 0.2, 0.2)  // G5
-  }
-
-  const playCancelSound = () => {
-    if (!orderSoundRef.current) {
-      orderSoundRef.current = new AudioContext()
-    }
-    const ctx = orderSoundRef.current
-    
-    const playTone = (freq: number, startTime: number, duration: number) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = "sine"
-      osc.frequency.value = freq
-      gain.gain.setValueAtTime(1.0, startTime)
-      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start(startTime)
-      osc.stop(startTime + duration)
-    }
-    
-    const now = ctx.currentTime
-    playTone(400, now, 0.15)       // Descending tone
-    playTone(300, now + 0.15, 0.2) // Lower tone
-  }
-
   const handleOrder = async (type: "pizza" | "side", id: string) => {
     const item = type === "pizza" 
       ? pizzas.find((p) => p.id === id)
@@ -134,7 +81,6 @@ export default function FrontPage() {
     
     const data = await res.json()
     if (data.order) {
-      playOrderSound()
       setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
     }
   }
@@ -153,7 +99,6 @@ export default function FrontPage() {
   }
 
   const handleCancel = async (orderId: string, itemId: string) => {
-    playCancelSound()
     await fetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -166,40 +111,8 @@ export default function FrontPage() {
     })
   }
 
-  const playBeep = () => {
-    if (!buzzerContextRef.current) {
-      buzzerContextRef.current = new AudioContext()
-    }
-    const ctx = buzzerContextRef.current
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    
-    osc.type = "square"
-    osc.frequency.value = 800
-    gain.gain.setValueAtTime(1.0, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15)
-    
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start()
-    osc.stop(ctx.currentTime + 0.15)
-  }
-
-  const startBuzzer = () => {
-    playBeep()
-    buzzerIntervalRef.current = setInterval(playBeep, 300)
-  }
-
-  const stopBuzzer = () => {
-    if (buzzerIntervalRef.current) {
-      clearInterval(buzzerIntervalRef.current)
-      buzzerIntervalRef.current = null
-    }
-  }
-
   const handleSirenStart = async () => {
     setIsCallingStaff(true)
-    startBuzzer()
     await fetch("/api/siren", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -209,7 +122,6 @@ export default function FrontPage() {
 
   const handleSirenStop = async () => {
     setIsCallingStaff(false)
-    stopBuzzer()
     await fetch("/api/siren", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
