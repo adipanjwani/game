@@ -157,32 +157,32 @@ export default function FrontPage() {
             const qty = quantities[item.id] || 1
             
             return (
-              <div key={item.id} className="flex items-center bg-card border border-border rounded-lg px-3 py-2 min-h-0">
+              <div key={item.id} className="flex items-center bg-card border border-border rounded-lg px-4 py-3 min-h-0">
                 {/* Left: Name */}
-                <span className="text-sm font-bold text-foreground whitespace-nowrap w-24 shrink-0">{item.name}</span>
+                <span className="text-base font-bold text-foreground whitespace-nowrap w-28 shrink-0">{item.name}</span>
 
                 {/* Center: Quantity + Toggle */}
-                <div className="flex-1 flex items-center justify-center gap-3">
+                <div className="flex-1 flex items-center justify-center gap-4">
                   {/* Quantity Controls */}
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
-                      size="sm"
-                      className="h-8 w-8 p-0"
+                      size="lg"
+                      className="h-12 w-12 p-0 touch-manipulation active:scale-95 transition-transform"
                       onClick={() => handleQuantityChange(item.id, -1)}
                       disabled={isOrdered}
                     >
-                      <Minus className="h-3 w-3" />
+                      <Minus className="h-5 w-5" />
                     </Button>
-                    <span className="w-6 text-center font-bold text-sm">{qty}</span>
+                    <span className="w-8 text-center font-bold text-lg">{qty}</span>
                     <Button
                       variant="outline"
-                      size="sm"
-                      className="h-8 w-8 p-0"
+                      size="lg"
+                      className="h-12 w-12 p-0 touch-manipulation active:scale-95 transition-transform"
                       onClick={() => handleQuantityChange(item.id, 1)}
                       disabled={isOrdered}
                     >
-                      <Plus className="h-3 w-3" />
+                      <Plus className="h-5 w-5" />
                     </Button>
                   </div>
                   
@@ -209,11 +209,11 @@ export default function FrontPage() {
                 </div>
 
                 {/* Right: Buttons */}
-                <div className="flex gap-1 w-44 shrink-0">
+                <div className="flex gap-2 w-52 shrink-0">
                   {!isOrdered ? (
                     <Button
-                      size="sm"
-                      className="h-8 flex-1 text-sm font-bold"
+                      size="lg"
+                      className="h-12 flex-1 text-base font-bold touch-manipulation active:scale-95 transition-transform"
                       onClick={() => handleOrder(item.type, item.id)}
                     >
                       Order
@@ -221,17 +221,17 @@ export default function FrontPage() {
                   ) : (
                     <>
                       <Button
-                        size="sm"
+                        size="lg"
                         variant="default"
-                        className="bg-green-600 hover:bg-green-700 h-8 flex-1 text-xs font-bold"
+                        className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-12 flex-1 text-sm font-bold touch-manipulation active:scale-95 transition-transform"
                         onClick={() => handleDelivered(orderId, item.id)}
                       >
                         Delivered
                       </Button>
                       <Button
-                        size="sm"
+                        size="lg"
                         variant="destructive"
-                        className="h-8 flex-1 text-xs font-bold"
+                        className="h-12 flex-1 text-sm font-bold touch-manipulation active:scale-95 transition-transform"
                         onClick={() => handleCancel(orderId, item.id)}
                       >
                         Cancel
