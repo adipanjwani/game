@@ -88,6 +88,7 @@ export default function KitchenPage() {
       
       // Handle siren updates via SSE
       if (data.type === "siren_update") {
+        console.log("[v0] Siren update received:", data.active)
         setSirenActive(data.active)
       }
     }
@@ -114,6 +115,7 @@ export default function KitchenPage() {
 
   // Play siren sound when active
   useEffect(() => {
+    console.log("[v0] Siren effect triggered, sirenActive:", sirenActive)
     if (sirenActive) {
       if (!audioContextRef.current) {
         audioContextRef.current = new AudioContext()
