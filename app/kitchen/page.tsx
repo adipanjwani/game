@@ -21,7 +21,15 @@ export default function KitchenPage() {
       const response = await fetch("/api/orders")
       if (response.ok) {
         const data = await response.json()
-        setOrders(data.orders)
+        // Only update if orders actually changed (compare by JSON)
+        setOrders((prevOrders) => {
+          const prevJson = JSON.stringify(prevOrders)
+          const newJson = JSON.stringify(data.orders)
+          if (prevJson !== newJson) {
+            return data.orders
+          }
+          return prevOrders
+        })
       }
     } catch (error) {
       console.error("[v0] Error fetching orders:", error)

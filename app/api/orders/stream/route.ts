@@ -11,25 +11,31 @@ if (!globalForSSE.clients) {
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
+  let heartbeatInterval: NodeJS.Timeout | null = null
+  let controllerRef: ReadableStreamDefaultController | null = null
+  
   const stream = new ReadableStream({
     start(controller) {
+      controllerRef = controller
       globalForSSE.clients.add(controller)
       
       // Send initial connection message
       controller.enqueue(`data: {"type":"connected"}\n\n`)
       
-      // Keep connection alive with heartbeat
-      const heartbeat = setInterval(() => {
+      // Keep connection alive with heartbeat every 30s
+      heartbeatInterval = setInterval(() => {
         try {
           controller.enqueue(`data: {"type":"heartbeat"}\n\n`)
         } catch {
-          clearInterval(heartbeat)
+          if (heartbeatInterval) clearInterval(heartbeatInterval)
           globalForSSE.clients.delete(controller)
         }
-      }, 15000)
+      }, 30000)
     },
     cancel() {
-      // Client disconnected
+      // Client disconnected - clean up
+      if (heartbeatInterval) clearInterval(heartbeatInterval)
+      if (controllerRef) globalForSSE.clients.delete(controllerRef)
     }
   })
 
