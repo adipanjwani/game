@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { pizzas, sides, Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { Plus, Minus } from "lucide-react"
+import { ChefHat, Check, X, Plus, Minus } from "lucide-react"
 
 export default function FrontPage() {
   const [pizzaSizes, setPizzaSizes] = useState<Record<string, boolean>>(
@@ -19,40 +20,34 @@ export default function FrontPage() {
       [...pizzas, ...sides].map((item) => [item.id, defaults[item.id] || 1])
     )
   })
+  const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [placedOrders, setPlacedOrders] = useState<Record<string, string>>({})
   const [isCallingStaff, setIsCallingStaff] = useState(false)
 
-  // Fast polling for real-time sync
-  const fetchOrders = useCallback(async () => {
-    try {
+  useEffect(() => {
+    const fetchOrders = async () => {
       const res = await fetch("/api/orders")
-      if (!res.ok) return
       const data = await res.json()
-      const activeOrders = (data.orders || []).filter(
+      const cooking = data.orders.filter(
         (o: Order) => o.status === "pending" || o.status === "preparing"
       )
+      setActiveOrders(cooking)
       
-      const activeItemToOrder: Record<string, string> = {}
-      activeOrders.forEach((order: Order) => {
-        order.items.forEach((item) => {
-          const itemId = item.pizza?.id || item.side?.id
-          if (itemId) {
-            activeItemToOrder[itemId] = order.id
+      setPlacedOrders((prev) => {
+        const activeOrderIds = new Set(cooking.map((o: Order) => o.id))
+        const updated: Record<string, string> = {}
+        for (const [itemId, orderId] of Object.entries(prev)) {
+          if (activeOrderIds.has(orderId)) {
+            updated[itemId] = orderId
           }
-        })
+        }
+        return updated
       })
-      
-      setPlacedOrders(activeItemToOrder)
-    } catch {
-      // Ignore errors for fast recovery
     }
-  }, [])
-
-  useEffect(() => {
     fetchOrders()
-    const interval = setInterval(fetchOrders, 1000) // Faster sync
+    const interval = setInterval(fetchOrders, 2000)
     return () => clearInterval(interval)
-  }, [fetchOrders])
+  }, [])
 
   const handleToggleSize = (pizzaId: string) => {
     setPizzaSizes((prev) => ({ ...prev, [pizzaId]: !prev[pizzaId] }))
@@ -65,18 +60,12 @@ export default function FrontPage() {
     }))
   }
 
-  const handleOrder = (type: "pizza" | "side", id: string) => {
-    // Prevent double-clicks - check if already ordered
-    if (placedOrders[id]) return
-    
+  const handleOrder = async (type: "pizza" | "side", id: string) => {
     const item = type === "pizza" 
       ? pizzas.find((p) => p.id === id)
       : sides.find((s) => s.id === id)
     
     if (!item) return
-
-    // Optimistic UI update - show as ordered immediately
-    setPlacedOrders((prev) => ({ ...prev, [id]: "pending" }))
 
     const orderItems = [{
       ...(type === "pizza" ? { pizza: item } : { side: item }),
@@ -84,67 +73,56 @@ export default function FrontPage() {
       quantity: quantities[id] || 1,
     }]
 
-    // Fire and forget - don't block UI
-    fetch("/api/orders", {
+    const res = await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: orderItems }),
-    }).then(res => res.json()).then(data => {
-      if (data.order) {
-        setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
-      }
-    }).catch(() => {
-      // Revert on error
-      setPlacedOrders((prev) => {
-        const updated = { ...prev }
-        delete updated[id]
-        return updated
-      })
     })
+    
+    const data = await res.json()
+    if (data.order) {
+      setPlacedOrders((prev) => ({ ...prev, [id]: data.order.id }))
+    }
   }
 
-  const handleDelivered = (orderId: string, itemId: string) => {
-    // Optimistic UI - remove immediately
+  const handleDelivered = async (orderId: string, itemId: string) => {
+    await fetch("/api/orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, status: "completed" }),
+    })
     setPlacedOrders((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
       return updated
     })
-    // Fire and forget
-    fetch("/api/orders", {
+  }
+
+  const handleCancel = async (orderId: string, itemId: string) => {
+    await fetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId, status: "completed" }),
     })
-  }
-
-  const handleCancel = (orderId: string, itemId: string) => {
-    // Optimistic UI - remove immediately
     setPlacedOrders((prev) => {
       const updated = { ...prev }
       delete updated[itemId]
       return updated
     })
-    // Fire and forget
-    fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
   }
 
-  const handleSirenStart = () => {
+  const handleSirenStart = async () => {
     setIsCallingStaff(true)
-    fetch("/api/siren", {
+    await fetch("/api/siren", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: true }),
     })
   }
 
-  const handleSirenStop = () => {
+  const handleSirenStop = async () => {
     setIsCallingStaff(false)
-    fetch("/api/siren", {
+    await fetch("/api/siren", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ active: false }),
@@ -157,14 +135,20 @@ export default function FrontPage() {
   ]
 
   return (
-    <div className="h-screen bg-background p-6">
+    <div className="h-screen bg-background p-4 flex gap-4 overflow-hidden">
       {/* Menu Panel */}
-      <div className="flex-1 flex flex-col min-h-0">
-        <header className="mb-4">
-          <h1 className="text-3xl font-bold text-foreground">Menu</h1>
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <header className="flex items-center justify-between mb-3 shrink-0">
+          <h1 className="text-2xl font-bold text-foreground">Menu</h1>
+          <Link href="/kitchen">
+            <Button variant="outline" size="default" className="gap-2">
+              <ChefHat className="h-5 w-5" />
+              Kitchen
+            </Button>
+          </Link>
         </header>
 
-        <div className="grid grid-cols-2 gap-4 content-start overflow-y-auto">
+        <div className="flex-1 grid grid-cols-2 gap-2 auto-rows-fr overflow-hidden">
           {allItems.map((item) => {
             const isPizza = item.type === "pizza"
             const isFullPizza = isPizza ? pizzaSizes[item.id] : false
@@ -173,39 +157,39 @@ export default function FrontPage() {
             const qty = quantities[item.id] || 1
             
             return (
-              <div key={item.id} className="flex items-center bg-card border-2 border-border rounded-xl p-4 min-h-[72px] touch-manipulation">
+              <div key={item.id} className="flex items-center bg-card border border-border rounded-lg px-3 py-2 min-h-0">
                 {/* Left: Name */}
-                <span className="text-xl font-bold text-foreground whitespace-nowrap w-40">{item.name}</span>
+                <span className="text-sm font-bold text-foreground whitespace-nowrap w-24 shrink-0">{item.name}</span>
 
                 {/* Center: Quantity + Toggle */}
-                <div className="flex-1 flex items-center justify-center gap-6">
+                <div className="flex-1 flex items-center justify-center gap-3">
                   {/* Quantity Controls */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <Button
                       variant="outline"
-                      size="lg"
-                      className="h-14 w-14 p-0 text-2xl touch-manipulation"
+                      size="sm"
+                      className="h-8 w-8 p-0"
                       onClick={() => handleQuantityChange(item.id, -1)}
                       disabled={isOrdered}
                     >
-                      <Minus className="h-6 w-6" />
+                      <Minus className="h-3 w-3" />
                     </Button>
-                    <span className="w-12 text-center font-bold text-2xl">{qty}</span>
+                    <span className="w-6 text-center font-bold text-sm">{qty}</span>
                     <Button
                       variant="outline"
-                      size="lg"
-                      className="h-14 w-14 p-0 text-2xl touch-manipulation"
+                      size="sm"
+                      className="h-8 w-8 p-0"
                       onClick={() => handleQuantityChange(item.id, 1)}
                       disabled={isOrdered}
                     >
-                      <Plus className="h-6 w-6" />
+                      <Plus className="h-3 w-3" />
                     </Button>
                   </div>
                   
                   {isPizza && !('noSizeToggle' in item && item.noSizeToggle) && (
-                    <div className="flex items-center gap-3 select-none">
+                    <div className="flex items-center gap-1 select-none">
                       <span 
-                        className={`text-lg font-bold cursor-pointer px-3 py-2 rounded-lg touch-manipulation ${!isFullPizza ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
+                        className={`text-xs font-semibold cursor-pointer px-1 ${!isFullPizza ? "text-primary" : "text-muted-foreground"}`}
                         onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: false }))}
                       >
                         Half
@@ -213,10 +197,9 @@ export default function FrontPage() {
                       <Switch
                         checked={isFullPizza}
                         onCheckedChange={(checked) => setPizzaSizes((prev) => ({ ...prev, [item.id]: checked }))}
-                        className="scale-150"
                       />
                       <span 
-                        className={`text-lg font-bold cursor-pointer px-3 py-2 rounded-lg touch-manipulation ${isFullPizza ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
+                        className={`text-xs font-semibold cursor-pointer px-1 ${isFullPizza ? "text-primary" : "text-muted-foreground"}`}
                         onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: true }))}
                       >
                         Full
@@ -226,11 +209,11 @@ export default function FrontPage() {
                 </div>
 
                 {/* Right: Buttons */}
-                <div className="flex gap-3 w-72">
+                <div className="flex gap-1 w-44 shrink-0">
                   {!isOrdered ? (
                     <Button
-                      size="lg"
-                      className="h-14 flex-1 text-xl font-bold touch-manipulation active:scale-95 transition-transform"
+                      size="sm"
+                      className="h-8 flex-1 text-sm font-bold"
                       onClick={() => handleOrder(item.type, item.id)}
                     >
                       Order
@@ -238,17 +221,17 @@ export default function FrontPage() {
                   ) : (
                     <>
                       <Button
-                        size="lg"
+                        size="sm"
                         variant="default"
-                        className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-14 flex-1 text-lg font-bold touch-manipulation active:scale-95 transition-transform"
+                        className="bg-green-600 hover:bg-green-700 h-8 flex-1 text-xs font-bold"
                         onClick={() => handleDelivered(orderId, item.id)}
                       >
                         Delivered
                       </Button>
                       <Button
-                        size="lg"
+                        size="sm"
                         variant="destructive"
-                        className="h-14 flex-1 text-lg font-bold touch-manipulation active:scale-95 transition-transform"
+                        className="h-8 flex-1 text-xs font-bold"
                         onClick={() => handleCancel(orderId, item.id)}
                       >
                         Cancel
@@ -262,14 +245,14 @@ export default function FrontPage() {
         </div>
 
         {/* Call Staff Button - Hold to activate siren */}
-        <div className="flex justify-center mt-6">
+        <div className="flex justify-center mt-2 shrink-0">
           <Button
             size="lg"
             variant="destructive"
-            className={`h-20 px-24 text-2xl font-bold select-none touch-manipulation transition-all duration-100 ${
+            className={`h-14 px-16 text-xl font-bold select-none transition-all duration-150 ${
               isCallingStaff 
                 ? "bg-red-800 scale-95 ring-4 ring-red-400 animate-pulse" 
-                : "bg-red-600 hover:bg-red-700 active:bg-red-800"
+                : "bg-red-600 hover:bg-red-700"
             }`}
             onMouseDown={handleSirenStart}
             onMouseUp={handleSirenStop}
@@ -277,11 +260,58 @@ export default function FrontPage() {
             onTouchStart={handleSirenStart}
             onTouchEnd={handleSirenStop}
           >
-            {isCallingStaff ? "CALLING STAFF..." : "HOLD TO CALL STAFF"}
+            {isCallingStaff ? "Calling Staff..." : "Hold to Call Staff"}
           </Button>
         </div>
       </div>
 
+      {/* Cooking Panel */}
+      <div className="w-64 bg-card border border-border rounded-lg p-3 flex flex-col min-h-0 overflow-hidden shrink-0">
+        <h2 className="text-base font-bold text-foreground mb-2 flex items-center gap-2 shrink-0">
+          <ChefHat className="h-5 w-5 text-primary" />
+          Now Cooking
+        </h2>
+        <div className="flex-1 overflow-y-auto space-y-2">
+          {activeOrders.length === 0 ? (
+            <p className="text-muted-foreground text-sm text-center py-4">
+              No orders cooking
+            </p>
+          ) : (
+            activeOrders.map((order) => (
+              <div
+                key={order.id}
+                className="bg-muted/50 rounded-md p-2 border border-border"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-muted-foreground font-medium">
+                    #{order.id.slice(-4)}
+                  </span>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                      order.status === "preparing"
+                        ? "bg-primary/20 text-primary"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {order.status === "preparing" ? "Cooking" : "Queued"}
+                  </span>
+                </div>
+                {order.items.map((item, idx) => (
+                  <div key={idx} className="text-sm font-semibold text-foreground">
+                    {item.pizza ? (
+                      <span>
+                        {item.quantity > 1 && `${item.quantity}x `}{item.pizza.name} ({item.isFullPizza ? "Full" : "Half"})
+                      </span>
+                    ) : item.side ? (
+                      <span>{item.quantity > 1 && `${item.quantity}x `}{item.side.name}</span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   )
 }
