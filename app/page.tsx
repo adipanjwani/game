@@ -89,6 +89,30 @@ export default function FrontPage() {
     playTone(784, now + 0.2, 0.2)  // G5
   }
 
+  const playCancelSound = () => {
+    if (!orderSoundRef.current) {
+      orderSoundRef.current = new AudioContext()
+    }
+    const ctx = orderSoundRef.current
+    
+    const playTone = (freq: number, startTime: number, duration: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = "sine"
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.2, startTime)
+      gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(startTime)
+      osc.stop(startTime + duration)
+    }
+    
+    const now = ctx.currentTime
+    playTone(400, now, 0.15)       // Descending tone
+    playTone(300, now + 0.15, 0.2) // Lower tone
+  }
+
   const handleOrder = async (type: "pizza" | "side", id: string) => {
     const item = type === "pizza" 
       ? pizzas.find((p) => p.id === id)
@@ -129,6 +153,7 @@ export default function FrontPage() {
   }
 
   const handleCancel = async (orderId: string, itemId: string) => {
+    playCancelSound()
     await fetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
