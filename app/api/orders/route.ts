@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     const { items, tableNumber, orderType, orderNumber } = body as {
       items: OrderItem[]
       tableNumber?: number
-      orderType?: "dine-in" | "takeaway"
+      orderType?: "front" | "takeaway"
       orderNumber?: string
     }
 
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       status: "pending",
       createdAt: new Date(),
       tableNumber,
-      orderType: orderType || "dine-in",
+      orderType: orderType || "front",
       orderNumber,
     }
 

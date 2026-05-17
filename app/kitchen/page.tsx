@@ -274,7 +274,7 @@ export default function KitchenPage() {
                     </span>
                   ) : (
                     <span className="text-[10px] md:text-xs font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded">
-                      DINE-IN
+                      FRONT
                     </span>
                   )}
                 </div>

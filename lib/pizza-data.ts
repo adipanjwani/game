@@ -105,6 +105,6 @@ export interface Order {
   status: "pending" | "preparing" | "ready" | "completed"
   createdAt: Date
   tableNumber?: number
-  orderType: "dine-in" | "takeaway"
+  orderType: "front" | "takeaway"
   orderNumber?: string
 }
