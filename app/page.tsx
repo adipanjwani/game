@@ -5,9 +5,12 @@ import Link from "next/link"
 import { pizzas, sides, Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { ChefHat, Check, X, Plus, Minus } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { ChefHat, Check, X, Plus, Minus, UtensilsCrossed, ShoppingBag, ArrowLeft } from "lucide-react"
 
 export default function FrontPage() {
+  const [menuMode, setMenuMode] = useState<"selection" | "dine-in" | "takeaway">("selection")
+  const [takeawayOrderNumber, setTakeawayOrderNumber] = useState("")
   const [pizzaSizes, setPizzaSizes] = useState<Record<string, boolean>>(
     Object.fromEntries(pizzas.map((p) => [p.id, true]))
   )
@@ -168,11 +171,24 @@ export default function FrontPage() {
       quantity: quantities[id] || 1,
     }]
 
+    const orderPayload: { 
+      items: typeof orderItems
+      orderType: "dine-in" | "takeaway"
+      orderNumber?: string 
+    } = {
+      items: orderItems,
+      orderType: menuMode === "takeaway" ? "takeaway" : "dine-in",
+    }
+    
+    if (menuMode === "takeaway" && takeawayOrderNumber.trim()) {
+      orderPayload.orderNumber = takeawayOrderNumber.trim()
+    }
+
     try {
       await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: orderItems }),
+        body: JSON.stringify(orderPayload),
       })
     } catch (error) {
       // Revert optimistic update on failure
@@ -284,18 +300,78 @@ export default function FrontPage() {
     ...sides.map((s) => ({ ...s, type: "side" as const })),
   ]
 
+  // Menu Selection Screen
+  if (menuMode === "selection") {
+    return (
+      <div className="h-dvh bg-background flex flex-col items-center justify-center gap-8 p-4">
+        <h1 className="text-2xl md:text-3xl font-bold text-foreground">Select Order Type</h1>
+        <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
+          <Button
+            size="lg"
+            className="flex-1 h-24 md:h-32 text-lg md:text-xl font-bold gap-3 flex-col"
+            onClick={() => setMenuMode("dine-in")}
+          >
+            <UtensilsCrossed className="h-8 w-8 md:h-10 md:w-10" />
+            Dine-In
+          </Button>
+          <Button
+            size="lg"
+            variant="secondary"
+            className="flex-1 h-24 md:h-32 text-lg md:text-xl font-bold gap-3 flex-col"
+            onClick={() => setMenuMode("takeaway")}
+          >
+            <ShoppingBag className="h-8 w-8 md:h-10 md:w-10" />
+            Takeaway
+          </Button>
+        </div>
+        <Link href="/kitchen">
+          <Button variant="outline" size="sm" className="gap-1 text-xs md:text-sm">
+            <ChefHat className="h-3.5 w-3.5 md:h-4 md:w-4" />
+            Kitchen Display
+          </Button>
+        </Link>
+      </div>
+    )
+  }
+
   return (
     <div className="h-dvh bg-background p-2 md:p-3 flex flex-col gap-1 md:gap-2 overflow-hidden">
       {/* Menu Panel */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <header className="flex items-center justify-between mb-1 md:mb-2 shrink-0">
-          <h1 className="text-lg md:text-xl font-bold text-foreground">Menu</h1>
-          <Link href="/kitchen">
-            <Button variant="outline" size="sm" className="gap-1 text-xs md:text-sm h-7 md:h-8">
-              <ChefHat className="h-3.5 w-3.5 md:h-4 md:w-4" />
-              Kitchen
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={() => setMenuMode("selection")}
+            >
+              <ArrowLeft className="h-4 w-4" />
             </Button>
-          </Link>
+            <h1 className="text-lg md:text-xl font-bold text-foreground">
+              {menuMode === "takeaway" ? "Takeaway Menu" : "Dine-In Menu"}
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            {menuMode === "takeaway" && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">Order #:</span>
+                <Input
+                  type="text"
+                  placeholder="Enter #"
+                  value={takeawayOrderNumber}
+                  onChange={(e) => setTakeawayOrderNumber(e.target.value)}
+                  className="h-7 w-20 text-xs font-bold"
+                />
+              </div>
+            )}
+            <Link href="/kitchen">
+              <Button variant="outline" size="sm" className="gap-1 text-xs md:text-sm h-7 md:h-8">
+                <ChefHat className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                Kitchen
+              </Button>
+            </Link>
+          </div>
         </header>
 
         <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-1 md:gap-1.5 content-start overflow-y-auto overflow-x-hidden">

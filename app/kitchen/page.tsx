@@ -265,8 +265,19 @@ export default function KitchenPage() {
                   : "bg-card border-border"
               }`}
             >
-              {/* Timer */}
-              <div className="flex items-center justify-end mb-1 md:mb-2">
+              {/* Timer and Order Type Badge */}
+              <div className="flex items-center justify-between mb-1 md:mb-2">
+                <div className="flex items-center gap-1">
+                  {order.orderType === "takeaway" ? (
+                    <span className="text-[10px] md:text-xs font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded">
+                      TAKEAWAY{order.orderNumber ? ` #${order.orderNumber}` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] md:text-xs font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded">
+                      DINE-IN
+                    </span>
+                  )}
+                </div>
                 <span className={`text-sm md:text-lg lg:text-xl font-mono font-bold ${
                   overdue ? "text-red-500" : "text-foreground"
                 }`}>
