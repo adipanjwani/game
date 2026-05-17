@@ -5,8 +5,7 @@ import Link from "next/link"
 import { pizzas, sides, Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { Input } from "@/components/ui/input"
-import { ChefHat, Check, X, Plus, Minus, ShoppingBag } from "lucide-react"
+import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete } from "lucide-react"
 
 export default function FrontPage() {
   const [menuMode, setMenuMode] = useState<"front" | "takeaway">("front")
@@ -301,6 +300,16 @@ export default function FrontPage() {
     }
   }, [])
 
+  const handleNumpadPress = (value: string) => {
+    if (value === "backspace") {
+      setTakeawayOrderNumber((prev) => prev.slice(0, -1))
+    } else if (value === "clear") {
+      setTakeawayOrderNumber("")
+    } else {
+      setTakeawayOrderNumber((prev) => prev + value)
+    }
+  }
+
   const allItems = [
     ...pizzas.map((p) => ({ ...p, type: "pizza" as const })),
     ...sides.map((s) => ({ ...s, type: "side" as const })),
@@ -318,30 +327,17 @@ export default function FrontPage() {
           </div>
           <div className="flex items-center gap-2">
             {menuMode === "takeaway" ? (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">Order #:</span>
-                  <Input
-                    type="text"
-                    placeholder="Enter #"
-                    value={takeawayOrderNumber}
-                    onChange={(e) => setTakeawayOrderNumber(e.target.value)}
-                    className="h-7 w-20 text-xs font-bold"
-                    autoFocus
-                  />
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 md:h-8 text-xs"
-                  onClick={() => {
-                    setMenuMode("front")
-                    setTakeawayOrderNumber("")
-                  }}
-                >
-                  Cancel
-                </Button>
-              </>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 md:h-8 text-xs"
+                onClick={() => {
+                  setMenuMode("front")
+                  setTakeawayOrderNumber("")
+                }}
+              >
+                Cancel
+              </Button>
             ) : (
               <Button
                 variant="secondary"
@@ -361,6 +357,47 @@ export default function FrontPage() {
             </Link>
           </div>
         </header>
+
+        {/* Numeric Keypad for Takeaway Order Number */}
+        {menuMode === "takeaway" && (
+          <div className="flex items-center gap-2 mb-1 md:mb-2 shrink-0">
+            <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1">
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((num) => (
+                <Button
+                  key={num}
+                  variant="outline"
+                  size="sm"
+                  className="h-9 w-9 md:h-10 md:w-10 p-0 text-base md:text-lg font-bold touch-manipulation active:scale-95 transition-transform"
+                  onClick={() => handleNumpadPress(num)}
+                >
+                  {num}
+                </Button>
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 w-9 md:h-10 md:w-10 p-0 touch-manipulation active:scale-95 transition-transform"
+                onClick={() => handleNumpadPress("backspace")}
+              >
+                <Delete className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 px-2 md:h-10 md:px-3 text-xs font-bold touch-manipulation active:scale-95 transition-transform"
+                onClick={() => handleNumpadPress("clear")}
+              >
+                CLR
+              </Button>
+            </div>
+            <div className="flex items-center gap-1.5 bg-card border border-border rounded-lg px-3 py-1.5">
+              <span className="text-sm text-muted-foreground">Order #:</span>
+              <span className="text-lg md:text-xl font-bold text-foreground min-w-[3ch]">
+                {takeawayOrderNumber || "-"}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-1 md:gap-1.5 content-start overflow-y-auto overflow-x-hidden">
           {allItems.map((item) => {
