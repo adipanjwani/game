@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Order } from "@/lib/pizza-data"
-import { Pizza, AlertTriangle, Monitor, Volume2, VolumeX } from "lucide-react"
+import { Pizza, AlertTriangle, Monitor, Volume2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
@@ -17,9 +17,9 @@ export default function KitchenPage() {
   const oscillatorRef = useRef<OscillatorNode | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
   const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const [audioEnabled, setAudioEnabled] = useState(false)
+  const [audioEnabled, setAudioEnabled] = useState(true)
   
-  // Initialize AudioContext on any user interaction with the page
+  // Initialize AudioContext immediately on mount
   useEffect(() => {
     const initAudio = async () => {
       if (!audioContextRef.current) {
@@ -28,41 +28,10 @@ export default function KitchenPage() {
       if (audioContextRef.current.state === "suspended") {
         await audioContextRef.current.resume()
       }
-      if (audioContextRef.current.state === "running" && !audioEnabled) {
-        setAudioEnabled(true)
-      }
     }
     
-    document.addEventListener("click", initAudio)
-    document.addEventListener("touchstart", initAudio)
-    
-    return () => {
-      document.removeEventListener("click", initAudio)
-      document.removeEventListener("touchstart", initAudio)
-    }
-  }, [audioEnabled])
-  
-  // Explicit enable audio with a test beep
-  const enableAudio = useCallback(async () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext()
-    }
-    if (audioContextRef.current.state === "suspended") {
-      await audioContextRef.current.resume()
-    }
-    // Play a test beep to confirm
-    const ctx = audioContextRef.current
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = "sine"
-    osc.frequency.value = 440
-    gain.gain.setValueAtTime(0.2, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2)
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start()
-    osc.stop(ctx.currentTime + 0.2)
-    setAudioEnabled(true)
+    // Initialize immediately
+    initAudio()
   }, [])
   
   // Play notification sound for new orders
@@ -241,7 +210,7 @@ export default function KitchenPage() {
         <div className="fixed inset-0 z-50 bg-red-500/30 pointer-events-none flex items-center justify-center animate-pulse">
           <div className="bg-red-600 text-white px-4 md:px-6 lg:px-8 py-3 md:py-5 lg:py-6 rounded-lg md:rounded-xl flex items-center gap-2 md:gap-3 shadow-2xl">
             <AlertTriangle className="h-6 w-6 md:h-8 md:w-8 lg:h-10 lg:w-10" />
-            <span className="text-lg md:text-xl lg:text-2xl font-bold">STAFF NEEDED!</span>
+            <span className="text-lg md:text-xl lg:text-2xl font-bold">Front is empty.</span>
             <AlertTriangle className="h-6 w-6 md:h-8 md:w-8 lg:h-10 lg:w-10" />
           </div>
         </div>
@@ -255,17 +224,10 @@ export default function KitchenPage() {
             <h1 className="text-lg md:text-xl lg:text-2xl font-bold text-foreground">Kitchen Display</h1>
           </div>
           <div className="flex items-center gap-2">
-            {!audioEnabled ? (
-              <Button size="sm" variant="destructive" onClick={enableAudio} className="text-xs gap-1 animate-pulse">
-                <VolumeX className="h-3.5 w-3.5" />
-                Tap to Enable Sound
-              </Button>
-            ) : (
-              <span className="text-xs text-green-500 flex items-center gap-1">
-                <Volume2 className="h-3.5 w-3.5" />
-                Sound On
-              </span>
-            )}
+            <span className="text-xs text-green-500 flex items-center gap-1">
+              <Volume2 className="h-3.5 w-3.5" />
+              Sound On
+            </span>
             <Button asChild size="sm" className="text-xs md:text-sm">
               <Link href="/">
                 <Monitor className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
