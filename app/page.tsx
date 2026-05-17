@@ -507,7 +507,8 @@ export default function FrontPage() {
             const isPizza = item.type === "pizza"
             const isFullPizza = isPizza ? pizzaSizes[item.id] : false
             const orderId = placedOrders[item.id]
-            const isOrdered = !!orderId
+            // Only show ordered state in front mode - takeaway uses cart system
+            const isOrdered = menuMode === "front" && !!orderId
             const qty = quantities[item.id] || 1
             
             return (
