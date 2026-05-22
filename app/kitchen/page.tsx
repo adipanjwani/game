@@ -13,6 +13,9 @@ export default function KitchenPage() {
   const [currentTime, setCurrentTime] = useState(Date.now())
   const [selectedTakeawayOrder, setSelectedTakeawayOrder] = useState<string | null>(null)
   
+  // Track orders that have been optimistically removed (awaiting server confirmation)
+  const pendingRemovals = useRef<Set<string>>(new Set())
+  
   const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
   const audioContextRef = useRef<AudioContext | null>(null)
   const oscillatorRef = useRef<OscillatorNode | null>(null)
@@ -127,14 +130,25 @@ export default function KitchenPage() {
       if (data.orders) {
         const serverOrders: Order[] = data.orders
         
+        // Filter out orders that are pending removal (optimistic updates)
+        const filteredOrders = serverOrders.filter(o => !pendingRemovals.current.has(o.id))
+        
+        // Clean up pendingRemovals - if server confirms removal, remove from set
+        pendingRemovals.current.forEach((id) => {
+          const stillOnServer = serverOrders.some(o => o.id === id && (o.status === "pending" || o.status === "preparing"))
+          if (!stillOnServer) {
+            pendingRemovals.current.delete(id)
+          }
+        })
+        
         // Check for new orders to play notification
         setOrders((prevOrders) => {
           const prevOrderIds = new Set(prevOrders.map(o => o.id))
-          const newOrders = serverOrders.filter(o => !prevOrderIds.has(o.id))
+          const newOrders = filteredOrders.filter(o => !prevOrderIds.has(o.id))
           if (newOrders.length > 0 && prevOrders.length > 0) {
             playNotificationSound()
           }
-          return serverOrders
+          return filteredOrders
         })
         setIsLoading(false)
       }
@@ -205,6 +219,8 @@ export default function KitchenPage() {
 
   // Handle takeaway order delivered
   const handleTakeawayDelivered = async (orderId: string) => {
+    // Mark as pending removal so fetches don't restore it
+    pendingRemovals.current.add(orderId)
     // Optimistically remove from local state immediately
     setOrders((prev) => prev.filter((o) => o.id !== orderId))
     setSelectedTakeawayOrder(null)
@@ -217,11 +233,15 @@ export default function KitchenPage() {
       })
     } catch (error) {
       console.error("Failed to mark order as delivered:", error)
+      // Revert on error - remove from pending removals
+      pendingRemovals.current.delete(orderId)
     }
   }
 
   // Handle takeaway order cancel
   const handleTakeawayCancel = async (orderId: string) => {
+    // Mark as pending removal so fetches don't restore it
+    pendingRemovals.current.add(orderId)
     // Optimistically remove from local state immediately
     setOrders((prev) => prev.filter((o) => o.id !== orderId))
     setSelectedTakeawayOrder(null)
@@ -232,6 +252,8 @@ export default function KitchenPage() {
       })
     } catch (error) {
       console.error("Failed to cancel order:", error)
+      // Revert on error - remove from pending removals
+      pendingRemovals.current.delete(orderId)
     }
   }
 

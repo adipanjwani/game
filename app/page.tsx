@@ -46,6 +46,14 @@ export default function FrontPage() {
   const [currentTime, setCurrentTime] = useState(Date.now())
   const [isCallingStaff, setIsCallingStaff] = useState(false)
   
+  // Refs to track current state for use in processStateUpdate
+  const placedOrdersRef = useRef(placedOrders)
+  const pendingItemsRef = useRef(pendingItems)
+  
+  // Keep refs in sync with state
+  useEffect(() => { placedOrdersRef.current = placedOrders }, [placedOrders])
+  useEffect(() => { pendingItemsRef.current = pendingItems }, [pendingItems])
+  
   const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
   
   // Update current time every second for countdown
@@ -133,18 +141,20 @@ export default function FrontPage() {
         merged[itemId] = orderId
       })
       // Remove items that are completed on server (not in cooking anymore)
+      // BUT preserve items that are "pending" (optimistic updates awaiting server confirmation)
       Object.keys(merged).forEach((itemId) => {
         const orderId = merged[itemId]
         const stillCooking = cooking.some(o => o.id === orderId)
         const isServerOrder = serverPlacedOrders[itemId]
-        if (!stillCooking && !isServerOrder && orderId !== "pending") {
+        const isPending = orderId === "pending"
+        if (!stillCooking && !isServerOrder && !isPending) {
           delete merged[itemId]
         }
       })
       return merged
     })
     
-    // Merge order times similarly
+    // Merge order times similarly - but preserve times for pending orders
     setOrderTimes((prev) => {
       const merged = { ...prev }
       Object.entries(serverOrderTimes).forEach(([itemId, time]) => {
@@ -152,14 +162,15 @@ export default function FrontPage() {
           merged[itemId] = time
         }
       })
-      // Clean up times for removed orders
+      // Clean up times for removed orders, but preserve pending ones
       Object.keys(merged).forEach((itemId) => {
-        if (!serverPlacedOrders[itemId]) {
-          const orderId = serverPlacedOrders[itemId]
-          const stillCooking = cooking.some(o => o.id === orderId)
-          if (!stillCooking) {
-            delete merged[itemId]
-          }
+        const isServerOrder = serverPlacedOrders[itemId]
+        const isPending = pendingItemsRef.current.has(itemId)
+        const currentPlacedOrder = placedOrdersRef.current[itemId]
+        
+        // Keep time if: on server, is pending, or has a placed order
+        if (!isServerOrder && !isPending && !currentPlacedOrder) {
+          delete merged[itemId]
         }
       })
       return merged
