@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import { pizzas, sides, Order, PizzaBaseType } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,15 @@ interface CartItem {
   isFullPizza: boolean
   quantity: number
   baseType?: PizzaBaseType
+}
+
+// Stable state store - survives re-renders and prevents flickering
+const stableStore = {
+  placedOrders: {} as Record<string, string>,
+  orderTimes: {} as Record<string, number>,
+  pendingItems: new Set<string>(),
+  mutationLock: false, // Prevents server updates from overwriting local state during mutations
+  lastMutationTime: 0,
 }
 
 export default function FrontPage() {
@@ -41,18 +50,16 @@ export default function FrontPage() {
   })
   const [activeOrders, setActiveOrders] = useState<Order[]>([])
   const [placedOrders, setPlacedOrders] = useState<Record<string, string>>({})
-  const [orderTimes, setOrderTimes] = useState<Record<string, number>>({}) // Track when each item was ordered
-  const [pendingItems, setPendingItems] = useState<Set<string>>(new Set()) // Items with in-flight requests
+  const [orderTimes, setOrderTimes] = useState<Record<string, number>>({})
   const [currentTime, setCurrentTime] = useState(Date.now())
   const [isCallingStaff, setIsCallingStaff] = useState(false)
+  const [, forceUpdate] = useState(0) // For triggering re-renders
   
-  // Refs to track current state for use in processStateUpdate
-  const placedOrdersRef = useRef(placedOrders)
-  const pendingItemsRef = useRef(pendingItems)
-  
-  // Keep refs in sync with state
-  useEffect(() => { placedOrdersRef.current = placedOrders }, [placedOrders])
-  useEffect(() => { pendingItemsRef.current = pendingItems }, [pendingItems])
+  // Sync stable store to React state on mount
+  useEffect(() => {
+    setPlacedOrders({ ...stableStore.placedOrders })
+    setOrderTimes({ ...stableStore.orderTimes })
+  }, [])
   
   const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
   
@@ -77,10 +84,14 @@ export default function FrontPage() {
     return currentTime - orderTime > DELIVERY_TIME_LIMIT
   }
 
-  // Process state update from centralized store - merge instead of replace
-  const processStateUpdate = (serverOrders: Order[]) => {
-    // Filter only front orders for the front display state
-    // Takeaway orders should NOT affect the front menu item status
+  // Process state update from server - respects mutation lock
+  const processStateUpdate = useCallback((serverOrders: Order[]) => {
+    // If mutation happened recently (within 2 seconds), skip this update
+    if (stableStore.mutationLock || Date.now() - stableStore.lastMutationTime < 2000) {
+      return
+    }
+    
+    // Filter only front orders
     const frontOrders = serverOrders.filter((o: Order) => {
       return o.orderType === "front" || o.orderType === undefined || o.orderType === null
     })
@@ -89,107 +100,65 @@ export default function FrontPage() {
       (o: Order) => o.status === "pending" || o.status === "preparing"
     )
     
-    // Merge active orders - add new ones, update existing, keep local ones not on server
-    setActiveOrders((prevOrders) => {
-      const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
-      const serverOrderMap = new Map(cooking.map(o => [o.id, o]))
-      
-      const mergedOrders: Order[] = []
-      
-      // Update existing orders with server data, keep if not in server (unless completed)
-      prevOrders.forEach(prevOrder => {
-        const serverOrder = serverOrderMap.get(prevOrder.id)
-        if (serverOrder) {
-          mergedOrders.push(serverOrder)
-        } else if (prevOrder.status !== "completed") {
-          mergedOrders.push(prevOrder)
-        }
-      })
-      
-      // Add new orders from server
-      cooking.forEach(serverOrder => {
-        if (!prevOrderMap.has(serverOrder.id)) {
-          mergedOrders.push(serverOrder)
-        }
-      })
-      
-      return mergedOrders
-    })
-    
-    // Build server-side placed orders (only from front orders)
-    // Map by item ID to order ID - for front orders, one item per order typically
+    // Build server state maps
     const serverPlacedOrders: Record<string, string> = {}
     const serverOrderTimes: Record<string, number> = {}
     cooking.forEach((order: Order) => {
       order.items.forEach((item) => {
         const itemId = item.pizza?.id || item.side?.id
-        if (itemId) {
-          // Only set if not already set (first order wins)
-          if (!serverPlacedOrders[itemId]) {
-            serverPlacedOrders[itemId] = order.id
-            serverOrderTimes[itemId] = new Date(order.createdAt).getTime()
-          }
+        if (itemId && !serverPlacedOrders[itemId]) {
+          serverPlacedOrders[itemId] = order.id
+          serverOrderTimes[itemId] = new Date(order.createdAt).getTime()
         }
       })
     })
     
-    // Merge placed orders - keep existing, add new from server
-    setPlacedOrders((prev) => {
-      const merged = { ...prev }
-      // Add new orders from server
-      Object.entries(serverPlacedOrders).forEach(([itemId, orderId]) => {
-        merged[itemId] = orderId
-      })
-      // Remove items that are completed on server (not in cooking anymore)
-      // BUT preserve items that are "pending" (optimistic updates awaiting server confirmation)
-      Object.keys(merged).forEach((itemId) => {
-        const orderId = merged[itemId]
-        const stillCooking = cooking.some(o => o.id === orderId)
-        const isServerOrder = serverPlacedOrders[itemId]
-        const isPending = orderId === "pending"
-        if (!stillCooking && !isServerOrder && !isPending) {
-          delete merged[itemId]
-        }
-      })
-      return merged
+    // Merge with stable store - NEVER remove pending items
+    const newPlacedOrders = { ...stableStore.placedOrders }
+    const newOrderTimes = { ...stableStore.orderTimes }
+    
+    // Add server orders
+    Object.entries(serverPlacedOrders).forEach(([itemId, orderId]) => {
+      // If we have a pending item, update it with the real order ID
+      if (stableStore.pendingItems.has(itemId)) {
+        newPlacedOrders[itemId] = orderId
+        stableStore.pendingItems.delete(itemId)
+      } else if (!newPlacedOrders[itemId]) {
+        newPlacedOrders[itemId] = orderId
+      }
     })
     
-    // Merge order times similarly - but preserve times for pending orders
-    setOrderTimes((prev) => {
-      const merged = { ...prev }
-      Object.entries(serverOrderTimes).forEach(([itemId, time]) => {
-        if (!merged[itemId]) {
-          merged[itemId] = time
-        }
-      })
-      // Clean up times for removed orders, but preserve pending ones
-      Object.keys(merged).forEach((itemId) => {
-        const isServerOrder = serverPlacedOrders[itemId]
-        const isPending = pendingItemsRef.current.has(itemId)
-        const currentPlacedOrder = placedOrdersRef.current[itemId]
-        
-        // Keep time if: on server, is pending, or has a placed order
-        if (!isServerOrder && !isPending && !currentPlacedOrder) {
-          delete merged[itemId]
-        }
-      })
-      return merged
+    // Add server times
+    Object.entries(serverOrderTimes).forEach(([itemId, time]) => {
+      if (!newOrderTimes[itemId]) {
+        newOrderTimes[itemId] = time
+      }
     })
     
-    // Clear pending items that server now has
-    setPendingItems((currentPending) => {
-      const stillPending = new Set<string>()
-      currentPending.forEach((itemId) => {
-        if (!serverPlacedOrders[itemId]) {
-          stillPending.add(itemId)
-        }
-      })
-      return stillPending
+    // Remove items no longer cooking (but NEVER remove pending items)
+    Object.keys(newPlacedOrders).forEach((itemId) => {
+      if (stableStore.pendingItems.has(itemId)) return // Never remove pending
+      const orderId = newPlacedOrders[itemId]
+      const stillCooking = cooking.some(o => o.id === orderId)
+      const isServerOrder = serverPlacedOrders[itemId]
+      if (!stillCooking && !isServerOrder) {
+        delete newPlacedOrders[itemId]
+        delete newOrderTimes[itemId]
+      }
     })
-  }
+    
+    // Update stable store
+    stableStore.placedOrders = newPlacedOrders
+    stableStore.orderTimes = newOrderTimes
+    
+    // Update React state
+    setPlacedOrders(newPlacedOrders)
+    setOrderTimes(newOrderTimes)
+    setActiveOrders(cooking)
+  }, [])
 
   // Fetch orders from API
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     try {
       const res = await fetch("/api/orders")
       const data = await res.json()
@@ -199,7 +168,7 @@ export default function FrontPage() {
     } catch (error) {
       console.error("[v0] Error fetching orders:", error)
     }
-  }
+  }, [processStateUpdate])
 
   // SSE for real-time refresh notifications
   useEffect(() => {
@@ -275,13 +244,18 @@ export default function FrontPage() {
       return
     }
 
-    // For front orders, send immediately (existing behavior)
-    // Mark as pending (in-flight) so SSE updates don't overwrite
-    setPendingItems((prev) => new Set(prev).add(id))
+    // For front orders - use mutation lock to prevent flicker
+    stableStore.mutationLock = true
+    stableStore.lastMutationTime = Date.now()
+    stableStore.pendingItems.add(id)
     
-    // Optimistic update
-    setPlacedOrders((prev) => ({ ...prev, [id]: "pending" }))
-    setOrderTimes((prev) => ({ ...prev, [id]: Date.now() }))
+    // Update stable store immediately
+    stableStore.placedOrders[id] = "pending"
+    stableStore.orderTimes[id] = Date.now()
+    
+    // Update React state
+    setPlacedOrders({ ...stableStore.placedOrders })
+    setOrderTimes({ ...stableStore.orderTimes })
 
     const orderItems = [{
       ...(type === "pizza" ? { pizza: item } : { side: item }),
@@ -304,67 +278,73 @@ export default function FrontPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderPayload),
       })
+      // Success - release lock after a delay to let server sync
+      setTimeout(() => {
+        stableStore.mutationLock = false
+      }, 1500)
     } catch (error) {
-      // Revert optimistic update on failure
-      setPendingItems((prev) => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-      setPlacedOrders((prev) => {
-        const updated = { ...prev }
-        delete updated[id]
-        return updated
-      })
-      setOrderTimes((prev) => {
-        const updated = { ...prev }
-        delete updated[id]
-        return updated
-      })
+      // Revert on failure
+      delete stableStore.placedOrders[id]
+      delete stableStore.orderTimes[id]
+      stableStore.pendingItems.delete(id)
+      setPlacedOrders({ ...stableStore.placedOrders })
+      setOrderTimes({ ...stableStore.orderTimes })
+      stableStore.mutationLock = false
     }
-    // SSE will sync the actual order ID and clear from pendingItems
   }
 
   const handleDelivered = async (orderId: string, itemId: string) => {
-    // Optimistic update
-    setPlacedOrders((prev) => {
-      const updated = { ...prev }
-      delete updated[itemId]
-      return updated
-    })
-    setOrderTimes((prev) => {
-      const updated = { ...prev }
-      delete updated[itemId]
-      return updated
-    })
+    // Lock mutations
+    stableStore.mutationLock = true
+    stableStore.lastMutationTime = Date.now()
     
-    await fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
-    // SSE will confirm the update
+    // Update stable store
+    delete stableStore.placedOrders[itemId]
+    delete stableStore.orderTimes[itemId]
+    
+    // Update React state
+    setPlacedOrders({ ...stableStore.placedOrders })
+    setOrderTimes({ ...stableStore.orderTimes })
+    
+    try {
+      await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, status: "completed" }),
+      })
+      setTimeout(() => {
+        stableStore.mutationLock = false
+      }, 1500)
+    } catch (error) {
+      stableStore.mutationLock = false
+    }
   }
 
   const handleCancel = async (orderId: string, itemId: string) => {
-    // Optimistic update
-    setPlacedOrders((prev) => {
-      const updated = { ...prev }
-      delete updated[itemId]
-      return updated
-    })
-    setOrderTimes((prev) => {
-      const updated = { ...prev }
-      delete updated[itemId]
-      return updated
-    })
+    // Lock mutations
+    stableStore.mutationLock = true
+    stableStore.lastMutationTime = Date.now()
     
-    await fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
-    // SSE will confirm the update
+    // Update stable store
+    delete stableStore.placedOrders[itemId]
+    delete stableStore.orderTimes[itemId]
+    
+    // Update React state
+    setPlacedOrders({ ...stableStore.placedOrders })
+    setOrderTimes({ ...stableStore.orderTimes })
+    
+    try {
+      await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, status: "completed" }),
+      })
+      setTimeout(() => {
+        stableStore.mutationLock = false
+      }, 1500)
+    } catch (error) {
+      stableStore.mutationLock = false
+    }
   }
 
   const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)

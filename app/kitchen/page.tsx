@@ -6,6 +6,14 @@ import { Pizza, AlertTriangle, Monitor, Volume2, VolumeX, Check, X } from "lucid
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
+// Stable state store - survives re-renders and prevents flickering
+const kitchenStore = {
+  orders: [] as Order[],
+  pendingRemovals: new Set<string>(),
+  mutationLock: false,
+  lastMutationTime: 0,
+}
+
 export default function KitchenPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -13,16 +21,13 @@ export default function KitchenPage() {
   const [currentTime, setCurrentTime] = useState(Date.now())
   const [selectedTakeawayOrder, setSelectedTakeawayOrder] = useState<string | null>(null)
   
-  // Track orders that have been optimistically removed (awaiting server confirmation)
-  const pendingRemovals = useRef<Set<string>>(new Set())
-  
   const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
   const audioContextRef = useRef<AudioContext | null>(null)
   const oscillatorRef = useRef<OscillatorNode | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
   const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const [audioEnabled, setAudioEnabled] = useState(false) // Start false, enable after user interaction
-  const [audioUnlocked, setAudioUnlocked] = useState(false) // Track if audio is unlocked (for iOS)
+  const [audioEnabled, setAudioEnabled] = useState(false)
+  const [audioUnlocked, setAudioUnlocked] = useState(false)
   
   // Function to unlock and enable audio (requires user interaction on iOS)
   const unlockAudio = useCallback(async () => {
@@ -124,22 +129,30 @@ export default function KitchenPage() {
 
   // Fetch orders from API
   const fetchOrders = useCallback(async () => {
+    // Skip if mutation in progress
+    if (kitchenStore.mutationLock || Date.now() - kitchenStore.lastMutationTime < 2000) {
+      return
+    }
+    
     try {
       const res = await fetch("/api/orders")
       const data = await res.json()
       if (data.orders) {
         const serverOrders: Order[] = data.orders
         
-        // Filter out orders that are pending removal (optimistic updates)
-        const filteredOrders = serverOrders.filter(o => !pendingRemovals.current.has(o.id))
+        // Filter out orders that are pending removal
+        const filteredOrders = serverOrders.filter(o => !kitchenStore.pendingRemovals.has(o.id))
         
         // Clean up pendingRemovals - if server confirms removal, remove from set
-        pendingRemovals.current.forEach((id) => {
+        kitchenStore.pendingRemovals.forEach((id) => {
           const stillOnServer = serverOrders.some(o => o.id === id && (o.status === "pending" || o.status === "preparing"))
           if (!stillOnServer) {
-            pendingRemovals.current.delete(id)
+            kitchenStore.pendingRemovals.delete(id)
           }
         })
+        
+        // Update store and state
+        kitchenStore.orders = filteredOrders
         
         // Check for new orders to play notification
         setOrders((prevOrders) => {
@@ -219,10 +232,14 @@ export default function KitchenPage() {
 
   // Handle takeaway order delivered
   const handleTakeawayDelivered = async (orderId: string) => {
-    // Mark as pending removal so fetches don't restore it
-    pendingRemovals.current.add(orderId)
-    // Optimistically remove from local state immediately
-    setOrders((prev) => prev.filter((o) => o.id !== orderId))
+    // Lock mutations to prevent flicker
+    kitchenStore.mutationLock = true
+    kitchenStore.lastMutationTime = Date.now()
+    kitchenStore.pendingRemovals.add(orderId)
+    
+    // Update store and state immediately
+    kitchenStore.orders = kitchenStore.orders.filter((o) => o.id !== orderId)
+    setOrders([...kitchenStore.orders])
     setSelectedTakeawayOrder(null)
     
     try {
@@ -231,29 +248,39 @@ export default function KitchenPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "completed" }),
       })
+      setTimeout(() => {
+        kitchenStore.mutationLock = false
+      }, 1500)
     } catch (error) {
       console.error("Failed to mark order as delivered:", error)
-      // Revert on error - remove from pending removals
-      pendingRemovals.current.delete(orderId)
+      kitchenStore.pendingRemovals.delete(orderId)
+      kitchenStore.mutationLock = false
     }
   }
 
   // Handle takeaway order cancel
   const handleTakeawayCancel = async (orderId: string) => {
-    // Mark as pending removal so fetches don't restore it
-    pendingRemovals.current.add(orderId)
-    // Optimistically remove from local state immediately
-    setOrders((prev) => prev.filter((o) => o.id !== orderId))
+    // Lock mutations to prevent flicker
+    kitchenStore.mutationLock = true
+    kitchenStore.lastMutationTime = Date.now()
+    kitchenStore.pendingRemovals.add(orderId)
+    
+    // Update store and state immediately
+    kitchenStore.orders = kitchenStore.orders.filter((o) => o.id !== orderId)
+    setOrders([...kitchenStore.orders])
     setSelectedTakeawayOrder(null)
     
     try {
       await fetch(`/api/orders/${orderId}`, {
         method: "DELETE",
       })
+      setTimeout(() => {
+        kitchenStore.mutationLock = false
+      }, 1500)
     } catch (error) {
       console.error("Failed to cancel order:", error)
-      // Revert on error - remove from pending removals
-      pendingRemovals.current.delete(orderId)
+      kitchenStore.pendingRemovals.delete(orderId)
+      kitchenStore.mutationLock = false
     }
   }
 
