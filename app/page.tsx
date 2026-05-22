@@ -5,7 +5,7 @@ import Link from "next/link"
 import { pizzas, sides, Order, PizzaBaseType } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send, Settings, Clock, BarChart3 } from "lucide-react"
+import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send, Settings, BarChart3 } from "lucide-react"
 
 interface CartItem {
   cartItemId: string // Unique ID for each cart entry
@@ -485,11 +485,6 @@ export default function FrontPage() {
             <h1 className="text-lg md:text-xl font-bold text-foreground">
               {menuMode === "takeaway" ? "Takeaway Order" : "Front Menu"}
             </h1>
-            {/* Clock */}
-            <div className="flex items-center gap-1 text-sm md:text-base font-mono font-bold text-muted-foreground">
-              <Clock className="h-3.5 w-3.5 md:h-4 md:w-4" />
-              {new Date(currentTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-            </div>
             {/* Statistics */}
             {menuMode === "front" && (
               <div className="hidden sm:flex items-center gap-2 text-xs">
