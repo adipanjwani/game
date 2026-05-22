@@ -64,13 +64,18 @@ export default function FrontPage() {
 
   // Process state update from centralized store
   const processStateUpdate = (serverOrders: Order[]) => {
-    const cooking = serverOrders.filter(
+    // Filter only front orders for the front display state
+    const frontOrders = serverOrders.filter(
+      (o: Order) => o.orderType === "front" || !o.orderType
+    )
+    
+    const cooking = frontOrders.filter(
       (o: Order) => o.status === "pending" || o.status === "preparing"
     )
     
     setActiveOrders(cooking)
     
-    // Build server-side placed orders
+    // Build server-side placed orders (only from front orders)
     const serverPlacedOrders: Record<string, string> = {}
     const serverOrderTimes: Record<string, number> = {}
     cooking.forEach((order: Order) => {
