@@ -336,6 +336,7 @@ export default function FrontPage() {
 
   const handleSendToKitchen = async () => {
     if (takeawayCart.length === 0) return
+    if (!takeawayOrderNumber.trim()) return // Order number is mandatory
 
     // Send each cart item as a separate order to kitchen
     const orderPromises = takeawayCart.map(async (cartItem) => {
@@ -352,14 +353,11 @@ export default function FrontPage() {
       const orderPayload: {
         items: typeof orderItems
         orderType: "front" | "takeaway"
-        orderNumber?: string
+        orderNumber: string
       } = {
         items: orderItems,
         orderType: "takeaway",
-      }
-
-      if (takeawayOrderNumber.trim()) {
-        orderPayload.orderNumber = takeawayOrderNumber.trim()
+        orderNumber: takeawayOrderNumber.trim(),
       }
 
       return fetch("/api/orders", {
@@ -501,12 +499,12 @@ export default function FrontPage() {
               </div>
               <Button
                 size="sm"
-                className="h-8 gap-1 bg-green-600 hover:bg-green-700 text-white font-bold shrink-0"
+                className="h-8 gap-1 bg-green-600 hover:bg-green-700 text-white font-bold shrink-0 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 onClick={handleSendToKitchen}
-                disabled={takeawayCart.length === 0}
+                disabled={takeawayCart.length === 0 || !takeawayOrderNumber.trim()}
               >
                 <Send className="h-3.5 w-3.5" />
-                Send to Kitchen
+                {!takeawayOrderNumber.trim() ? "Enter Order #" : "Send to Kitchen"}
               </Button>
             </div>
           </div>

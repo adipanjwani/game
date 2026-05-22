@@ -316,9 +316,14 @@ export default function KitchenPage() {
               <div className="flex items-center justify-between mb-1 md:mb-2">
                 <div className="flex items-center gap-1">
                   {order.orderType === "takeaway" ? (
-                    <span className="text-[10px] md:text-xs font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded">
-                      TAKEAWAY{order.orderNumber ? ` #${order.orderNumber}` : ""}
-                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] md:text-xs font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded">
+                        TAKEAWAY
+                      </span>
+                      <span className="text-sm md:text-base lg:text-lg font-bold text-amber-600">
+                        #{order.orderNumber}
+                      </span>
+                    </div>
                   ) : (
                     <span className="text-[10px] md:text-xs font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded">
                       FRONT
