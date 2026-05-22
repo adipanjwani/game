@@ -119,58 +119,42 @@ export default function KitchenPage() {
     }
   }, [])
 
-  // SSE for real-time state updates from centralized store
+  // Fetch orders from API
+  const fetchOrders = useCallback(async () => {
+    try {
+      const res = await fetch("/api/orders")
+      const data = await res.json()
+      if (data.orders) {
+        const serverOrders: Order[] = data.orders
+        
+        // Check for new orders to play notification
+        setOrders((prevOrders) => {
+          const prevOrderIds = new Set(prevOrders.map(o => o.id))
+          const newOrders = serverOrders.filter(o => !prevOrderIds.has(o.id))
+          if (newOrders.length > 0 && prevOrders.length > 0) {
+            playNotificationSound()
+          }
+          return serverOrders
+        })
+        setIsLoading(false)
+      }
+    } catch (error) {
+      console.error("[v0] Error fetching orders:", error)
+    }
+  }, [playNotificationSound])
+
+  // SSE for real-time refresh notifications
   useEffect(() => {
     const eventSource = new EventSource("/api/orders/stream")
-    let prevOrderIds = new Set<string>()
     
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
       
-      if (data.type === "heartbeat") return
+      if (data.type === "heartbeat" || data.type === "connected") return
       
-      if (data.type === "state_update" && data.state) {
-        const serverOrders: Order[] = data.state.orders
-        
-        // Check for new orders to play notification
-        const newOrderIds = serverOrders.filter(o => !prevOrderIds.has(o.id))
-        if (newOrderIds.length > 0 && prevOrderIds.size > 0) {
-          playNotificationSound()
-        }
-        prevOrderIds = new Set(serverOrders.map(o => o.id))
-        
-        // Merge orders - add new ones and update existing, but don't remove
-        setOrders((prevOrders) => {
-          const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
-          const serverOrderMap = new Map(serverOrders.map(o => [o.id, o]))
-          
-          // Start with all previous orders
-          const mergedOrders: Order[] = []
-          
-          // Update existing orders with server data, keep if not in server
-          prevOrders.forEach(prevOrder => {
-            const serverOrder = serverOrderMap.get(prevOrder.id)
-            if (serverOrder) {
-              // Order exists on server - use server version (may have updated status)
-              mergedOrders.push(serverOrder)
-            } else {
-              // Order not on server anymore - keep it locally unless completed
-              if (prevOrder.status !== "completed") {
-                mergedOrders.push(prevOrder)
-              }
-            }
-          })
-          
-          // Add new orders from server that we don't have
-          serverOrders.forEach(serverOrder => {
-            if (!prevOrderMap.has(serverOrder.id)) {
-              mergedOrders.push(serverOrder)
-            }
-          })
-          
-          return mergedOrders
-        })
-        setIsLoading(false)
+      if (data.type === "refresh") {
+        // Server notified us of changes, fetch fresh data
+        fetchOrders()
       }
       
       if (data.type === "siren_update") {
@@ -185,58 +169,18 @@ export default function KitchenPage() {
     return () => {
       eventSource.close()
     }
-  }, [playNotificationSound])
+  }, [fetchOrders])
 
-  // Initial fetch and fallback polling to ensure data stays in sync
+  // Initial fetch on mount
   useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        const res = await fetch("/api/orders")
-        const data = await res.json()
-        if (data.orders) {
-          const serverOrders: Order[] = data.orders
-          
-          // Merge orders - add new ones and update existing, but don't remove
-          setOrders((prevOrders) => {
-            const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
-            const serverOrderMap = new Map(serverOrders.map(o => [o.id, o]))
-            
-            // Start with all previous orders
-            const mergedOrders: Order[] = []
-            
-            // Update existing orders with server data, keep if not in server
-            prevOrders.forEach(prevOrder => {
-              const serverOrder = serverOrderMap.get(prevOrder.id)
-              if (serverOrder) {
-                // Order exists on server - use server version (may have updated status)
-                mergedOrders.push(serverOrder)
-              } else {
-                // Order not on server anymore - keep it locally unless completed
-                if (prevOrder.status !== "completed") {
-                  mergedOrders.push(prevOrder)
-                }
-              }
-            })
-            
-            // Add new orders from server that we don't have
-            serverOrders.forEach(serverOrder => {
-              if (!prevOrderMap.has(serverOrder.id)) {
-                mergedOrders.push(serverOrder)
-              }
-            })
-            
-            return mergedOrders
-          })
-          setIsLoading(false)
-        }
-      } catch {}
-    }
-    // Fetch immediately on mount/refresh
     fetchOrders()
-    // Poll every 2 seconds to sync with admin panel
-    const interval = setInterval(fetchOrders, 2000)
+  }, [fetchOrders])
+
+  // Fallback polling every 5 seconds (less aggressive since we have SSE)
+  useEffect(() => {
+    const interval = setInterval(fetchOrders, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchOrders])
 
   // Also poll siren as fallback (SSE siren may not always arrive)
   useEffect(() => {

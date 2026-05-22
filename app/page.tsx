@@ -177,26 +177,34 @@ export default function FrontPage() {
     })
   }
 
-  // SSE for real-time state updates from centralized store
+  // Fetch orders from API
+  const fetchOrders = async () => {
+    try {
+      const res = await fetch("/api/orders")
+      const data = await res.json()
+      if (data.orders) {
+        processStateUpdate(data.orders)
+      }
+    } catch (error) {
+      console.error("[v0] Error fetching orders:", error)
+    }
+  }
+
+  // SSE for real-time refresh notifications
   useEffect(() => {
     const eventSource = new EventSource("/api/orders/stream")
-    let lastOrdersJson = ""
     
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
       
-      // Ignore heartbeats - they just keep connection alive
-      if (data.type === "heartbeat") {
+      // Ignore heartbeats and connected messages
+      if (data.type === "heartbeat" || data.type === "connected") {
         return
       }
       
-      if (data.type === "state_update" && data.state) {
-        // Only process if orders actually changed
-        const newOrdersJson = JSON.stringify(data.state.orders)
-        if (newOrdersJson !== lastOrdersJson) {
-          lastOrdersJson = newOrdersJson
-          processStateUpdate(data.state.orders)
-        }
+      if (data.type === "refresh") {
+        // Server notified us of changes, fetch fresh data
+        fetchOrders()
       }
     }
     
@@ -209,21 +217,14 @@ export default function FrontPage() {
     }
   }, [])
 
-  // Initial fetch and fallback polling to ensure data stays in sync
+  // Initial fetch on mount
   useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        const res = await fetch("/api/orders")
-        const data = await res.json()
-        if (data.orders) {
-          processStateUpdate(data.orders)
-        }
-      } catch {}
-    }
-    // Fetch immediately on mount/refresh
     fetchOrders()
-    // Poll every 2 seconds to sync with admin panel
-    const interval = setInterval(fetchOrders, 2000)
+  }, [])
+
+  // Fallback polling every 5 seconds (less aggressive since we have SSE)
+  useEffect(() => {
+    const interval = setInterval(fetchOrders, 5000)
     return () => clearInterval(interval)
   }, [])
 

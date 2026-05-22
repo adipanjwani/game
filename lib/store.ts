@@ -1,87 +1,17 @@
-import { Order } from "./pizza-data"
+import { Order, OrderItem } from "./pizza-data"
 
-// Centralized data store for all connected devices
-export interface AppState {
-  orders: Order[]
-  lastUpdated: number
-}
-
-// Global store persisted across hot reloads
+// Global SSE client management (no order storage - use Supabase)
 const globalStore = globalThis as unknown as {
-  appState: AppState
   clients: Set<ReadableStreamDefaultController>
-}
-
-if (!globalStore.appState) {
-  globalStore.appState = {
-    orders: [],
-    lastUpdated: Date.now(),
-  }
+  lastUpdated: number
 }
 
 if (!globalStore.clients) {
   globalStore.clients = new Set()
 }
 
-// Get current state
-export function getState(): AppState {
-  return globalStore.appState
-}
-
-// Get orders
-export function getOrders(): Order[] {
-  return globalStore.appState.orders
-}
-
-// Add an order
-export function addOrder(order: Order): void {
-  globalStore.appState.orders.push(order)
-  globalStore.appState.lastUpdated = Date.now()
-  broadcastState()
-}
-
-// Update an order
-export function updateOrder(orderId: string, updates: Partial<Order>): Order | null {
-  const order = globalStore.appState.orders.find((o) => o.id === orderId)
-  if (order) {
-    Object.assign(order, updates)
-    globalStore.appState.lastUpdated = Date.now()
-    broadcastState()
-    return order
-  }
-  return null
-}
-
-// Remove completed orders
-export function clearCompletedOrders(): void {
-  const orders = globalStore.appState.orders
-  for (let i = orders.length - 1; i >= 0; i--) {
-    if (orders[i].status === "completed") {
-      orders.splice(i, 1)
-    }
-  }
-  globalStore.appState.lastUpdated = Date.now()
-  broadcastState()
-}
-
-// Clear all orders
-export function clearAllOrders(): void {
-  globalStore.appState.orders.splice(0, globalStore.appState.orders.length)
-  globalStore.appState.lastUpdated = Date.now()
-  broadcastState()
-}
-
-// Remove a specific order by ID
-export function removeOrder(orderId: string): boolean {
-  const orders = globalStore.appState.orders
-  const index = orders.findIndex((o) => o.id === orderId)
-  if (index !== -1) {
-    orders.splice(index, 1)
-    globalStore.appState.lastUpdated = Date.now()
-    broadcastState()
-    return true
-  }
-  return false
+if (!globalStore.lastUpdated) {
+  globalStore.lastUpdated = Date.now()
 }
 
 // SSE client management
@@ -93,15 +23,12 @@ export function removeClient(controller: ReadableStreamDefaultController): void 
   globalStore.clients.delete(controller)
 }
 
-// Broadcast full state to all connected clients
+// Broadcast notification to all connected clients to refetch
 export function broadcastState(): void {
-  const state = getState()
+  globalStore.lastUpdated = Date.now()
   const message = `data: ${JSON.stringify({
-    type: "state_update",
-    state: {
-      orders: state.orders,
-      lastUpdated: state.lastUpdated,
-    }
+    type: "refresh",
+    timestamp: globalStore.lastUpdated,
   })}\n\n`
   
   globalStore.clients.forEach((controller) => {
@@ -111,24 +38,6 @@ export function broadcastState(): void {
       globalStore.clients.delete(controller)
     }
   })
-}
-
-// Send current state to a specific client
-export function sendStateToClient(controller: ReadableStreamDefaultController): void {
-  const state = getState()
-  const message = `data: ${JSON.stringify({
-    type: "state_update",
-    state: {
-      orders: state.orders,
-      lastUpdated: state.lastUpdated,
-    }
-  })}\n\n`
-  
-  try {
-    controller.enqueue(message)
-  } catch {
-    globalStore.clients.delete(controller)
-  }
 }
 
 // Broadcast siren state to all connected clients
@@ -145,4 +54,25 @@ export function broadcastSiren(active: boolean): void {
       globalStore.clients.delete(controller)
     }
   })
+}
+
+// Transform database order to app order format
+export function transformOrder(dbOrder: {
+  id: string
+  items: unknown
+  status: string
+  created_at: string
+  table_number: number | null
+  order_type: string
+  order_number: string | null
+}): Order {
+  return {
+    id: dbOrder.id,
+    items: dbOrder.items as OrderItem[],
+    status: dbOrder.status as Order["status"],
+    createdAt: new Date(dbOrder.created_at),
+    tableNumber: dbOrder.table_number ?? undefined,
+    orderType: dbOrder.order_type as "front" | "takeaway",
+    orderNumber: dbOrder.order_number ?? undefined,
+  }
 }
