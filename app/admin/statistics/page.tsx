@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Calendar, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ArrowLeft, CalendarIcon, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react"
 
 interface ItemStat {
   name: string
@@ -135,8 +137,29 @@ export default function StatisticsPage() {
               <Button variant="outline" size="icon" onClick={() => navigateDate("prev")}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="sm" onClick={goToToday} className="gap-1">
-                <Calendar className="h-4 w-4" />
+              
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1 min-w-[140px]">
+                    <CalendarIcon className="h-4 w-4" />
+                    {selectedDate.toLocaleDateString("en-AU", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="center">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => date && setSelectedDate(date)}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              
+              <Button variant="outline" size="sm" onClick={goToToday}>
                 Today
               </Button>
               <Button variant="outline" size="icon" onClick={() => navigateDate("next")}>
