@@ -5,7 +5,7 @@ import Link from "next/link"
 import { pizzas, sides, Order, PizzaBaseType } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send } from "lucide-react"
+import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send, Settings } from "lucide-react"
 
 interface CartItem {
   cartItemId: string // Unique ID for each cart entry
@@ -514,6 +514,12 @@ export default function FrontPage() {
               <Button variant="outline" size="sm" className="gap-1 text-xs md:text-sm h-7 md:h-8">
                 <ChefHat className="h-3.5 w-3.5 md:h-4 md:w-4" />
                 Kitchen
+              </Button>
+            </Link>
+            <Link href="/admin">
+              <Button variant="outline" size="sm" className="gap-1 text-xs md:text-sm h-7 md:h-8">
+                <Settings className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                Admin
               </Button>
             </Link>
           </div>
