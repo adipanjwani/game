@@ -5,7 +5,7 @@ import Link from "next/link"
 import { pizzas, sides, Order, PizzaBaseType } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send, Settings } from "lucide-react"
+import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send, Settings, BarChart3 } from "lucide-react"
 import { StaffClock } from "@/components/staff-clock"
 
 interface CartItem {
@@ -521,6 +521,12 @@ export default function FrontPage() {
               <Button variant="outline" size="sm" className="gap-1 text-xs md:text-sm h-7 md:h-8">
                 <Settings className="h-3.5 w-3.5 md:h-4 md:w-4" />
                 Admin
+              </Button>
+            </Link>
+            <Link href="/admin/statistics">
+              <Button variant="outline" size="sm" className="gap-1 text-xs md:text-sm h-7 md:h-8">
+                <BarChart3 className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                Stats
               </Button>
             </Link>
             <StaffClock />
