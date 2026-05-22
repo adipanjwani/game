@@ -178,13 +178,16 @@ export default function KitchenPage() {
 
   // Handle takeaway order delivered
   const handleTakeawayDelivered = async (orderId: string) => {
+    // Optimistically remove from local state immediately
+    setOrders((prev) => prev.filter((o) => o.id !== orderId))
+    setSelectedTakeawayOrder(null)
+    
     try {
       await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "completed" }),
       })
-      setSelectedTakeawayOrder(null)
     } catch (error) {
       console.error("Failed to mark order as delivered:", error)
     }
@@ -192,11 +195,14 @@ export default function KitchenPage() {
 
   // Handle takeaway order cancel
   const handleTakeawayCancel = async (orderId: string) => {
+    // Optimistically remove from local state immediately
+    setOrders((prev) => prev.filter((o) => o.id !== orderId))
+    setSelectedTakeawayOrder(null)
+    
     try {
       await fetch(`/api/orders/${orderId}`, {
         method: "DELETE",
       })
-      setSelectedTakeawayOrder(null)
     } catch (error) {
       console.error("Failed to cancel order:", error)
     }
