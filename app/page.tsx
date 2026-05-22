@@ -357,37 +357,31 @@ export default function FrontPage() {
     if (takeawayCart.length === 0) return
     if (!takeawayOrderNumber.trim()) return // Order number is mandatory
 
-    // Send each cart item as a separate order to kitchen
-    const orderPromises = takeawayCart.map(async (cartItem) => {
+    // Build all cart items into a single order
+    const orderItems = takeawayCart.map((cartItem) => {
       const item = cartItem.type === "pizza"
         ? pizzas.find((p) => p.id === cartItem.id)
         : sides.find((s) => s.id === cartItem.id)
       
-      const orderItems = [{
+      return {
         ...(cartItem.type === "pizza" ? { pizza: item } : { side: item }),
         isFullPizza: cartItem.isFullPizza,
         quantity: cartItem.quantity,
-      }]
-
-      const orderPayload: {
-        items: typeof orderItems
-        orderType: "front" | "takeaway"
-        orderNumber: string
-      } = {
-        items: orderItems,
-        orderType: "takeaway",
-        orderNumber: takeawayOrderNumber.trim(),
       }
+    })
 
-      return fetch("/api/orders", {
+    const orderPayload = {
+      items: orderItems,
+      orderType: "takeaway" as const,
+      orderNumber: takeawayOrderNumber.trim(),
+    }
+
+    try {
+      await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderPayload),
       })
-    })
-
-    try {
-      await Promise.all(orderPromises)
       
       // Clear cart and return to front mode
       setTakeawayCart([])
