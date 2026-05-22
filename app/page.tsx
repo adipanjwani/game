@@ -8,7 +8,8 @@ import { Switch } from "@/components/ui/switch"
 import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send } from "lucide-react"
 
 interface CartItem {
-  id: string
+  cartItemId: string // Unique ID for each cart entry
+  id: string // Original item ID
   name: string
   type: "pizza" | "side"
   isFullPizza: boolean
@@ -169,6 +170,7 @@ export default function FrontPage() {
     // For takeaway, add to cart instead of sending immediately
     if (menuMode === "takeaway") {
       const cartItem: CartItem = {
+        cartItemId: `cart-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         id: item.id,
         name: item.name,
         type,
@@ -323,8 +325,8 @@ export default function FrontPage() {
     }
   }
 
-  const handleRemoveFromCart = (index: number) => {
-    setTakeawayCart((prev) => prev.filter((_, i) => i !== index))
+  const handleRemoveFromCart = (cartItemId: string) => {
+    setTakeawayCart((prev) => prev.filter((item) => item.cartItemId !== cartItemId))
   }
 
   const handleSendToKitchen = async () => {
@@ -472,9 +474,9 @@ export default function FrontPage() {
                   <span className="text-xs text-muted-foreground">Empty - tap items to add</span>
                 ) : (
                   <div className="flex items-center gap-1">
-                    {takeawayCart.map((cartItem, index) => (
+                    {takeawayCart.map((cartItem) => (
                       <div
-                        key={index}
+                        key={cartItem.cartItemId}
                         className="flex items-center gap-1 bg-amber-500/20 rounded px-1.5 py-0.5"
                       >
                         <span className="text-xs font-medium text-foreground whitespace-nowrap">
@@ -483,7 +485,7 @@ export default function FrontPage() {
                         </span>
                         <button
                           className="text-red-500 hover:text-red-700 p-0.5 touch-manipulation"
-                          onClick={() => handleRemoveFromCart(index)}
+                          onClick={() => handleRemoveFromCart(cartItem.cartItemId)}
                         >
                           <X className="h-3 w-3" />
                         </button>
