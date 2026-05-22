@@ -65,9 +65,10 @@ export default function FrontPage() {
   // Process state update from centralized store
   const processStateUpdate = (serverOrders: Order[]) => {
     // Filter only front orders for the front display state
-    const frontOrders = serverOrders.filter(
-      (o: Order) => o.orderType === "front" || !o.orderType
-    )
+    // Takeaway orders should NOT affect the front menu item status
+    const frontOrders = serverOrders.filter((o: Order) => {
+      return o.orderType === "front" || o.orderType === undefined || o.orderType === null
+    })
     
     const cooking = frontOrders.filter(
       (o: Order) => o.status === "pending" || o.status === "preparing"
