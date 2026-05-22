@@ -65,15 +65,24 @@ function getBusinessWeekEnd(date: Date): Date {
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
-  const period = searchParams.get("period") || "day" // "day" or "week"
+  const period = searchParams.get("period") || "day" // "day", "week", or "custom"
   const dateParam = searchParams.get("date") // ISO date string
+  const startDateParam = searchParams.get("startDate") // ISO date string for custom range
+  const endDateParam = searchParams.get("endDate") // ISO date string for custom range
 
   const referenceDate = dateParam ? new Date(dateParam) : new Date()
   
   let startDate: Date
   let endDate: Date
 
-  if (period === "week") {
+  if (period === "custom" && startDateParam && endDateParam) {
+    // Custom date range - use business hours (6pm start, 6am end)
+    startDate = new Date(startDateParam)
+    startDate.setHours(18, 0, 0, 0)
+    endDate = new Date(endDateParam)
+    endDate.setDate(endDate.getDate() + 1)
+    endDate.setHours(6, 0, 0, 0)
+  } else if (period === "week") {
     startDate = getBusinessWeekStart(referenceDate)
     endDate = getBusinessWeekEnd(referenceDate)
   } else {

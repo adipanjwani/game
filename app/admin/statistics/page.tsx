@@ -30,15 +30,21 @@ interface Statistics {
 export default function StatisticsPage() {
   const [stats, setStats] = useState<Statistics | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [period, setPeriod] = useState<"day" | "week">("day")
+  const [period, setPeriod] = useState<"day" | "week" | "custom">("day")
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [startDate, setStartDate] = useState<Date>(new Date())
+  const [endDate, setEndDate] = useState<Date>(new Date())
 
   const fetchStats = async () => {
     setIsLoading(true)
     try {
-      const res = await fetch(
-        `/api/statistics?period=${period}&date=${selectedDate.toISOString()}`
-      )
+      let url = `/api/statistics?period=${period}`
+      if (period === "custom") {
+        url += `&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`
+      } else {
+        url += `&date=${selectedDate.toISOString()}`
+      }
+      const res = await fetch(url)
       const data = await res.json()
       setStats(data)
     } catch (error) {
@@ -49,7 +55,7 @@ export default function StatisticsPage() {
 
   useEffect(() => {
     fetchStats()
-  }, [period, selectedDate])
+  }, [period, selectedDate, startDate, endDate])
 
   const navigateDate = (direction: "prev" | "next") => {
     const newDate = new Date(selectedDate)
@@ -115,8 +121,8 @@ export default function StatisticsPage() {
 
         {/* Period Toggle */}
         <div className="bg-card border border-border rounded-lg p-4 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex gap-2">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant={period === "day" ? "default" : "outline"}
                 onClick={() => setPeriod("day")}
@@ -131,41 +137,114 @@ export default function StatisticsPage() {
               >
                 Weekly
               </Button>
+              <Button
+                variant={period === "custom" ? "default" : "outline"}
+                onClick={() => setPeriod("custom")}
+                size="sm"
+              >
+                Custom Range
+              </Button>
             </div>
             
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" onClick={() => navigateDate("prev")}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1 min-w-[140px]">
-                    <CalendarIcon className="h-4 w-4" />
-                    {selectedDate.toLocaleDateString("en-AU", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="center">
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(date) => date && setSelectedDate(date)}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-              
-              <Button variant="outline" size="sm" onClick={goToToday}>
-                Today
-              </Button>
-              <Button variant="outline" size="icon" onClick={() => navigateDate("next")}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
+            {period !== "custom" ? (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="icon" onClick={() => navigateDate("prev")}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="gap-1 min-w-[140px]">
+                      <CalendarIcon className="h-4 w-4" />
+                      {selectedDate.toLocaleDateString("en-AU", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="center">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => date && setSelectedDate(date)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                
+                <Button variant="outline" size="sm" onClick={goToToday}>
+                  Today
+                </Button>
+                <Button variant="outline" size="icon" onClick={() => navigateDate("next")}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">From:</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-1 min-w-[140px]">
+                        <CalendarIcon className="h-4 w-4" />
+                        {startDate.toLocaleDateString("en-AU", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={startDate}
+                        onSelect={(date) => {
+                          if (date) {
+                            setStartDate(date)
+                            if (date > endDate) {
+                              setEndDate(date)
+                            }
+                          }
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">To:</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-1 min-w-[140px]">
+                        <CalendarIcon className="h-4 w-4" />
+                        {endDate.toLocaleDateString("en-AU", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={endDate}
+                        onSelect={(date) => {
+                          if (date) {
+                            if (date < startDate) {
+                              setStartDate(date)
+                            }
+                            setEndDate(date)
+                          }
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+            )}
           </div>
           
           <div className="mt-3 text-sm text-muted-foreground">
