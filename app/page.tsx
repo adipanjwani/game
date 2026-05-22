@@ -354,19 +354,22 @@ export default function FrontPage() {
     if (takeawayCart.length === 0) return
     if (!takeawayOrderNumber.trim()) return // Order number is mandatory
 
-    // Validate half pizzas are in even numbers (group by pizza id + base type)
-    const halfPizzaCounts: Record<string, number> = {}
+    // Validate half pizzas are in even numbers per base type
+    // Two halves must have the same base (15" thin or 15" thick) to make a full pizza
+    const halfPizzaCountsByBase: Record<string, number> = {}
     takeawayCart.forEach((cartItem) => {
-      if (cartItem.type === "pizza" && !cartItem.isFullPizza) {
-        const key = `${cartItem.id}-${cartItem.baseType}`
-        halfPizzaCounts[key] = (halfPizzaCounts[key] || 0) + 1
+      if (cartItem.type === "pizza" && !cartItem.isFullPizza && cartItem.baseType) {
+        halfPizzaCountsByBase[cartItem.baseType] = (halfPizzaCountsByBase[cartItem.baseType] || 0) + 1
       }
     })
     
-    // Check if any half pizza count is odd
-    const oddHalfPizzas = Object.entries(halfPizzaCounts).filter(([, count]) => count % 2 !== 0)
+    // Check if any base type has odd number of halves
+    const oddHalfPizzas = Object.entries(halfPizzaCountsByBase).filter(([, count]) => count % 2 !== 0)
     if (oddHalfPizzas.length > 0) {
-      alert("Half pizzas must be in even numbers (2 halves = 1 full pizza). Please add another half or change to full.")
+      const baseNames = oddHalfPizzas.map(([base]) => 
+        base === "15-thick" ? "15\" Thick" : "15\" Thin"
+      ).join(", ")
+      alert(`Half pizzas must be in pairs with the same base type. You have an odd number of ${baseNames} halves. Please add another half with the same base or change to full.`)
       return
     }
 
