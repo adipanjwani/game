@@ -139,8 +139,37 @@ export default function KitchenPage() {
         }
         prevOrderIds = new Set(serverOrders.map(o => o.id))
         
-        // Simply set orders from server - trust the server as source of truth
-        setOrders(serverOrders)
+        // Merge orders - add new ones and update existing, but don't remove
+        setOrders((prevOrders) => {
+          const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
+          const serverOrderMap = new Map(serverOrders.map(o => [o.id, o]))
+          
+          // Start with all previous orders
+          const mergedOrders: Order[] = []
+          
+          // Update existing orders with server data, keep if not in server
+          prevOrders.forEach(prevOrder => {
+            const serverOrder = serverOrderMap.get(prevOrder.id)
+            if (serverOrder) {
+              // Order exists on server - use server version (may have updated status)
+              mergedOrders.push(serverOrder)
+            } else {
+              // Order not on server anymore - keep it locally unless completed
+              if (prevOrder.status !== "completed") {
+                mergedOrders.push(prevOrder)
+              }
+            }
+          })
+          
+          // Add new orders from server that we don't have
+          serverOrders.forEach(serverOrder => {
+            if (!prevOrderMap.has(serverOrder.id)) {
+              mergedOrders.push(serverOrder)
+            }
+          })
+          
+          return mergedOrders
+        })
         setIsLoading(false)
       }
       
@@ -165,15 +194,47 @@ export default function KitchenPage() {
         const res = await fetch("/api/orders")
         const data = await res.json()
         if (data.orders) {
-          setOrders(data.orders)
+          const serverOrders: Order[] = data.orders
+          
+          // Merge orders - add new ones and update existing, but don't remove
+          setOrders((prevOrders) => {
+            const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
+            const serverOrderMap = new Map(serverOrders.map(o => [o.id, o]))
+            
+            // Start with all previous orders
+            const mergedOrders: Order[] = []
+            
+            // Update existing orders with server data, keep if not in server
+            prevOrders.forEach(prevOrder => {
+              const serverOrder = serverOrderMap.get(prevOrder.id)
+              if (serverOrder) {
+                // Order exists on server - use server version (may have updated status)
+                mergedOrders.push(serverOrder)
+              } else {
+                // Order not on server anymore - keep it locally unless completed
+                if (prevOrder.status !== "completed") {
+                  mergedOrders.push(prevOrder)
+                }
+              }
+            })
+            
+            // Add new orders from server that we don't have
+            serverOrders.forEach(serverOrder => {
+              if (!prevOrderMap.has(serverOrder.id)) {
+                mergedOrders.push(serverOrder)
+              }
+            })
+            
+            return mergedOrders
+          })
           setIsLoading(false)
         }
       } catch {}
     }
     // Fetch immediately on mount/refresh
     fetchOrders()
-    // Poll every 3 seconds as fallback
-    const interval = setInterval(fetchOrders, 3000)
+    // Poll every 2 seconds to sync with admin panel
+    const interval = setInterval(fetchOrders, 2000)
     return () => clearInterval(interval)
   }, [])
 
