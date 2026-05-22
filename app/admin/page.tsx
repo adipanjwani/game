@@ -17,7 +17,36 @@ export default function AdminPage() {
       const res = await fetch("/api/orders")
       const data = await res.json()
       if (data.orders) {
-        setOrders(data.orders)
+        const serverOrders: Order[] = data.orders
+        
+        // Merge orders - add new ones, update existing, keep local ones
+        setOrders((prevOrders) => {
+          const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
+          const serverOrderMap = new Map(serverOrders.map(o => [o.id, o]))
+          
+          const mergedOrders: Order[] = []
+          
+          // Update existing orders with server data, keep if not in server
+          prevOrders.forEach(prevOrder => {
+            const serverOrder = serverOrderMap.get(prevOrder.id)
+            if (serverOrder) {
+              // Order exists on server - use server version
+              mergedOrders.push(serverOrder)
+            } else {
+              // Order not on server - keep locally unless it was cleared
+              mergedOrders.push(prevOrder)
+            }
+          })
+          
+          // Add new orders from server
+          serverOrders.forEach(serverOrder => {
+            if (!prevOrderMap.has(serverOrder.id)) {
+              mergedOrders.push(serverOrder)
+            }
+          })
+          
+          return mergedOrders
+        })
       }
       setLastRefresh(new Date())
       setIsLoading(false)
