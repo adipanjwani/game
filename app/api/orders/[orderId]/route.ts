@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getOrders, updateOrder } from "@/lib/store"
+import { updateOrder, removeOrder } from "@/lib/store"
 
 // Update a specific order (for takeaway delivered/cancel)
 export async function PATCH(
@@ -31,20 +31,10 @@ export async function DELETE(
   try {
     const { orderId } = await params
     
-    // Find and remove the order from the store
-    const orders = getOrders()
-    const orderIndex = orders.findIndex((o) => o.id === orderId)
-    
-    if (orderIndex === -1) {
+    const removed = removeOrder(orderId)
+    if (!removed) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
-    
-    // Remove the order
-    orders.splice(orderIndex, 1)
-    
-    // Broadcast the update
-    const { broadcastState } = await import("@/lib/store")
-    broadcastState()
 
     return NextResponse.json({ success: true })
   } catch (error) {

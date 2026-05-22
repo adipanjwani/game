@@ -358,7 +358,7 @@ export default function KitchenPage() {
                       {item.quantity > 1 && `${item.quantity}x `}
                       {item.pizza && (
                         item.baseType 
-                          ? (item.baseType === "15-thick" ? "15\" Thick" : item.baseType === "15-thin" ? "15\" Thin" : "12\" Thin")
+                          ? `${!item.isFullPizza ? "Half " : ""}${item.baseType === "15-thick" ? "15\" Thick" : item.baseType === "15-thin" ? "15\" Thin" : "12\" Thin"}`
                           : (item.isFullPizza ? "Full" : "Half")
                       )}
                     </span>

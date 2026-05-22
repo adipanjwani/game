@@ -71,6 +71,19 @@ export function clearAllOrders(): void {
   broadcastState()
 }
 
+// Remove a specific order by ID
+export function removeOrder(orderId: string): boolean {
+  const orders = globalStore.appState.orders
+  const index = orders.findIndex((o) => o.id === orderId)
+  if (index !== -1) {
+    orders.splice(index, 1)
+    globalStore.appState.lastUpdated = Date.now()
+    broadcastState()
+    return true
+  }
+  return false
+}
+
 // SSE client management
 export function addClient(controller: ReadableStreamDefaultController): void {
   globalStore.clients.add(controller)

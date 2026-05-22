@@ -24,6 +24,9 @@ export default function FrontPage() {
   const [takeawayBaseTypes, setTakeawayBaseTypes] = useState<Record<string, PizzaBaseType>>(
     Object.fromEntries(pizzas.map((p) => [p.id, "15-thick" as PizzaBaseType]))
   )
+  const [takeawayPizzaSizes, setTakeawayPizzaSizes] = useState<Record<string, boolean>>(
+    Object.fromEntries(pizzas.map((p) => [p.id, true])) // true = Full, false = Half
+  )
   const [pizzaSizes, setPizzaSizes] = useState<Record<string, boolean>>(
     Object.fromEntries(pizzas.map((p) => [p.id, true]))
   )
@@ -197,14 +200,17 @@ export default function FrontPage() {
 
     // For takeaway, add to cart instead of sending immediately
     if (menuMode === "takeaway") {
+      const baseType = type === "pizza" ? takeawayBaseTypes[id] : undefined
+      const isFullPizza = type === "pizza" ? takeawayPizzaSizes[id] : true
+      
       const cartItem: CartItem = {
         cartItemId: `cart-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         id: item.id,
         name: item.name,
         type,
-        isFullPizza: true, // Takeaway pizzas are always full
+        isFullPizza,
         quantity: 1, // Always quantity 1 for takeaway
-        baseType: type === "pizza" ? takeawayBaseTypes[id] : undefined,
+        baseType,
       }
       setTakeawayCart((prev) => [...prev, cartItem])
       return
@@ -362,6 +368,22 @@ export default function FrontPage() {
     if (takeawayCart.length === 0) return
     if (!takeawayOrderNumber.trim()) return // Order number is mandatory
 
+    // Validate half pizzas are in even numbers (group by pizza id + base type)
+    const halfPizzaCounts: Record<string, number> = {}
+    takeawayCart.forEach((cartItem) => {
+      if (cartItem.type === "pizza" && !cartItem.isFullPizza) {
+        const key = `${cartItem.id}-${cartItem.baseType}`
+        halfPizzaCounts[key] = (halfPizzaCounts[key] || 0) + 1
+      }
+    })
+    
+    // Check if any half pizza count is odd
+    const oddHalfPizzas = Object.entries(halfPizzaCounts).filter(([, count]) => count % 2 !== 0)
+    if (oddHalfPizzas.length > 0) {
+      alert("Half pizzas must be in even numbers (2 halves = 1 full pizza). Please add another half or change to full.")
+      return
+    }
+
     // Build all cart items into a single order
     const orderItems = takeawayCart.map((cartItem) => {
       const item = cartItem.type === "pizza"
@@ -505,7 +527,7 @@ export default function FrontPage() {
                           {cartItem.name}
                           {cartItem.type === "pizza" && cartItem.baseType && (
                             <span className="text-[10px] ml-1 text-muted-foreground">
-                              ({cartItem.baseType === "15-thick" ? "15\" Thick" : cartItem.baseType === "15-thin" ? "15\" Thin" : "12\" Thin"})
+                              ({!cartItem.isFullPizza ? "Half " : ""}{cartItem.baseType === "15-thick" ? "15\" Thick" : cartItem.baseType === "15-thin" ? "15\" Thin" : "12\" Thin"})
                             </span>
                           )}
                         </span>
@@ -550,25 +572,55 @@ export default function FrontPage() {
                 {/* Center: Quantity + Toggle (Front) OR Base Type (Takeaway) */}
                 <div className="flex-1 flex items-center justify-center gap-2 sm:gap-3">
                   {menuMode === "takeaway" && isPizza ? (
-                    /* Base Type Selection for Takeaway Pizzas */
-                    <div className="flex items-center gap-1">
-                      {[
-                        { value: "15-thick" as PizzaBaseType, label: "15\" Thick" },
-                        { value: "15-thin" as PizzaBaseType, label: "15\" Thin" },
-                        { value: "12-thin" as PizzaBaseType, label: "12\" Thin" },
-                      ].map((base) => (
-                        <button
-                          key={base.value}
-                          className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded transition-colors touch-manipulation ${
-                            takeawayBaseTypes[item.id] === base.value
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted text-muted-foreground hover:bg-muted/80"
-                          }`}
-                          onClick={() => setTakeawayBaseTypes((prev) => ({ ...prev, [item.id]: base.value }))}
-                        >
-                          {base.label}
-                        </button>
-                      ))}
+                    /* Base Type Selection + Half/Full Toggle for Takeaway Pizzas */
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        {[
+                          { value: "15-thick" as PizzaBaseType, label: "15\" Thick" },
+                          { value: "15-thin" as PizzaBaseType, label: "15\" Thin" },
+                          { value: "12-thin" as PizzaBaseType, label: "12\" Thin" },
+                        ].map((base) => (
+                          <button
+                            key={base.value}
+                            className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded transition-colors touch-manipulation ${
+                              takeawayBaseTypes[item.id] === base.value
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted text-muted-foreground hover:bg-muted/80"
+                            }`}
+                            onClick={() => {
+                              setTakeawayBaseTypes((prev) => ({ ...prev, [item.id]: base.value }))
+                              // Reset to Full when switching to 12" thin (no half allowed)
+                              if (base.value === "12-thin") {
+                                setTakeawayPizzaSizes((prev) => ({ ...prev, [item.id]: true }))
+                              }
+                            }}
+                          >
+                            {base.label}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Half/Full toggle - only for 15" sizes */}
+                      {takeawayBaseTypes[item.id] !== "12-thin" && (
+                        <div className="flex items-center gap-0.5 select-none">
+                          <span 
+                            className={`text-[10px] sm:text-xs font-semibold cursor-pointer px-0.5 ${!takeawayPizzaSizes[item.id] ? "text-primary" : "text-muted-foreground"}`}
+                            onClick={() => setTakeawayPizzaSizes((prev) => ({ ...prev, [item.id]: false }))}
+                          >
+                            Half
+                          </span>
+                          <Switch
+                            checked={takeawayPizzaSizes[item.id]}
+                            onCheckedChange={(checked) => setTakeawayPizzaSizes((prev) => ({ ...prev, [item.id]: checked }))}
+                            className="scale-75 sm:scale-90"
+                          />
+                          <span 
+                            className={`text-[10px] sm:text-xs font-semibold cursor-pointer px-0.5 ${takeawayPizzaSizes[item.id] ? "text-primary" : "text-muted-foreground"}`}
+                            onClick={() => setTakeawayPizzaSizes((prev) => ({ ...prev, [item.id]: true }))}
+                          >
+                            Full
+                          </span>
+                        </div>
+                      )}
                     </div>
                   ) : menuMode === "front" ? (
                     /* Front Mode: Quantity Controls */
