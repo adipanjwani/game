@@ -69,7 +69,7 @@ export default function FrontPage() {
     return currentTime - orderTime > DELIVERY_TIME_LIMIT
   }
 
-  // Process state update from centralized store
+  // Process state update from centralized store - merge instead of replace
   const processStateUpdate = (serverOrders: Order[]) => {
     // Filter only front orders for the front display state
     // Takeaway orders should NOT affect the front menu item status
@@ -81,7 +81,32 @@ export default function FrontPage() {
       (o: Order) => o.status === "pending" || o.status === "preparing"
     )
     
-    setActiveOrders(cooking)
+    // Merge active orders - add new ones, update existing, keep local ones not on server
+    setActiveOrders((prevOrders) => {
+      const prevOrderMap = new Map(prevOrders.map(o => [o.id, o]))
+      const serverOrderMap = new Map(cooking.map(o => [o.id, o]))
+      
+      const mergedOrders: Order[] = []
+      
+      // Update existing orders with server data, keep if not in server (unless completed)
+      prevOrders.forEach(prevOrder => {
+        const serverOrder = serverOrderMap.get(prevOrder.id)
+        if (serverOrder) {
+          mergedOrders.push(serverOrder)
+        } else if (prevOrder.status !== "completed") {
+          mergedOrders.push(prevOrder)
+        }
+      })
+      
+      // Add new orders from server
+      cooking.forEach(serverOrder => {
+        if (!prevOrderMap.has(serverOrder.id)) {
+          mergedOrders.push(serverOrder)
+        }
+      })
+      
+      return mergedOrders
+    })
     
     // Build server-side placed orders (only from front orders)
     // Map by item ID to order ID - for front orders, one item per order typically
@@ -100,6 +125,46 @@ export default function FrontPage() {
       })
     })
     
+    // Merge placed orders - keep existing, add new from server
+    setPlacedOrders((prev) => {
+      const merged = { ...prev }
+      // Add new orders from server
+      Object.entries(serverPlacedOrders).forEach(([itemId, orderId]) => {
+        merged[itemId] = orderId
+      })
+      // Remove items that are completed on server (not in cooking anymore)
+      Object.keys(merged).forEach((itemId) => {
+        const orderId = merged[itemId]
+        const stillCooking = cooking.some(o => o.id === orderId)
+        const isServerOrder = serverPlacedOrders[itemId]
+        if (!stillCooking && !isServerOrder && orderId !== "pending") {
+          delete merged[itemId]
+        }
+      })
+      return merged
+    })
+    
+    // Merge order times similarly
+    setOrderTimes((prev) => {
+      const merged = { ...prev }
+      Object.entries(serverOrderTimes).forEach(([itemId, time]) => {
+        if (!merged[itemId]) {
+          merged[itemId] = time
+        }
+      })
+      // Clean up times for removed orders
+      Object.keys(merged).forEach((itemId) => {
+        if (!serverPlacedOrders[itemId]) {
+          const orderId = serverPlacedOrders[itemId]
+          const stillCooking = cooking.some(o => o.id === orderId)
+          if (!stillCooking) {
+            delete merged[itemId]
+          }
+        }
+      })
+      return merged
+    })
+    
     // Clear pending items that server now has
     setPendingItems((currentPending) => {
       const stillPending = new Set<string>()
@@ -110,10 +175,6 @@ export default function FrontPage() {
       })
       return stillPending
     })
-    
-    // Set placed orders directly from server
-    setPlacedOrders(serverPlacedOrders)
-    setOrderTimes(serverOrderTimes)
   }
 
   // SSE for real-time state updates from centralized store
@@ -161,8 +222,8 @@ export default function FrontPage() {
     }
     // Fetch immediately on mount/refresh
     fetchOrders()
-    // Poll every 3 seconds as fallback
-    const interval = setInterval(fetchOrders, 3000)
+    // Poll every 2 seconds to sync with admin panel
+    const interval = setInterval(fetchOrders, 2000)
     return () => clearInterval(interval)
   }, [])
 
