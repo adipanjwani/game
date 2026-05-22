@@ -4,13 +4,22 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
-import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle } from "lucide-react"
+import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, Clock, BarChart3 } from "lucide-react"
 
 export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isClearing, setIsClearing] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+  const [currentTime, setCurrentTime] = useState<Date>(new Date())
+
+  // Clock update
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   const fetchOrders = async () => {
     try {
@@ -96,8 +105,20 @@ export default function AdminPage() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <header className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Admin Panel</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Admin Panel</h1>
+            <div className="flex items-center gap-1.5 text-lg font-mono font-bold text-muted-foreground">
+              <Clock className="h-5 w-5" />
+              {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </div>
+          </div>
           <div className="flex items-center gap-2">
+            <Link href="/admin/statistics">
+              <Button variant="outline" size="sm" className="gap-1">
+                <BarChart3 className="h-4 w-4" />
+                Statistics
+              </Button>
+            </Link>
             <Link href="/">
               <Button variant="outline" size="sm" className="gap-1">
                 <Home className="h-4 w-4" />
