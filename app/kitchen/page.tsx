@@ -18,8 +18,6 @@ export default function KitchenPage() {
   const oscillatorRef = useRef<OscillatorNode | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
   const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const pendingOrdersRef = useRef<Order[]>([]) // Buffer for incoming orders
-  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [audioEnabled, setAudioEnabled] = useState(true)
   
   // Initialize AudioContext immediately on mount
@@ -66,57 +64,7 @@ export default function KitchenPage() {
   // SSE for real-time state updates from centralized store
   useEffect(() => {
     const eventSource = new EventSource("/api/orders/stream")
-    
-    // Debounced update function to batch rapid changes
-    const applyUpdate = (serverOrders: Order[]) => {
-      setOrders((prevOrders) => {
-        // Create maps for quick lookup
-        const prevOrdersMap = new Map(prevOrders.map(o => [o.id, o]))
-        
-        // Check for new orders
-        const newOrderIds = serverOrders.filter(o => !prevOrdersMap.has(o.id))
-        if (newOrderIds.length > 0 && prevOrders.length > 0) {
-          playNotificationSound()
-        }
-        
-        // Merge orders: keep all server orders, update existing ones
-        const mergedOrders: Order[] = []
-        
-        // Add all server orders (new or updated)
-        for (const serverOrder of serverOrders) {
-          const prevOrder = prevOrdersMap.get(serverOrder.id)
-          if (prevOrder) {
-            // Update existing order only if status changed
-            if (prevOrder.status !== serverOrder.status) {
-              mergedOrders.push(serverOrder)
-            } else {
-              // Keep previous order reference to avoid re-render
-              mergedOrders.push(prevOrder)
-            }
-          } else {
-            // New order
-            mergedOrders.push(serverOrder)
-          }
-        }
-        
-        // Check if anything actually changed
-        if (mergedOrders.length !== prevOrders.length) {
-          return mergedOrders
-        }
-        
-        // Check if any order changed
-        let hasChange = false
-        for (let i = 0; i < mergedOrders.length; i++) {
-          if (mergedOrders[i] !== prevOrders[i]) {
-            hasChange = true
-            break
-          }
-        }
-        
-        return hasChange ? mergedOrders : prevOrders
-      })
-      setIsLoading(false)
-    }
+    let prevOrderIds = new Set<string>()
     
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
@@ -126,16 +74,16 @@ export default function KitchenPage() {
       if (data.type === "state_update" && data.state) {
         const serverOrders: Order[] = data.state.orders
         
-        // Store in buffer
-        pendingOrdersRef.current = serverOrders
-        
-        // Debounce: wait 50ms before applying to batch rapid updates
-        if (updateTimeoutRef.current) {
-          clearTimeout(updateTimeoutRef.current)
+        // Check for new orders to play notification
+        const newOrderIds = serverOrders.filter(o => !prevOrderIds.has(o.id))
+        if (newOrderIds.length > 0 && prevOrderIds.size > 0) {
+          playNotificationSound()
         }
-        updateTimeoutRef.current = setTimeout(() => {
-          applyUpdate(pendingOrdersRef.current)
-        }, 50)
+        prevOrderIds = new Set(serverOrders.map(o => o.id))
+        
+        // Simply set orders from server - trust the server as source of truth
+        setOrders(serverOrders)
+        setIsLoading(false)
       }
       
       if (data.type === "siren_update") {
@@ -149,11 +97,24 @@ export default function KitchenPage() {
     
     return () => {
       eventSource.close()
-      if (updateTimeoutRef.current) {
-        clearTimeout(updateTimeoutRef.current)
-      }
     }
   }, [playNotificationSound])
+
+  // Fallback polling to ensure data stays in sync
+  useEffect(() => {
+    const pollOrders = async () => {
+      try {
+        const res = await fetch("/api/orders")
+        const data = await res.json()
+        if (data.orders) {
+          setOrders(data.orders)
+        }
+      } catch {}
+    }
+    // Poll every 3 seconds as fallback
+    const interval = setInterval(pollOrders, 3000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Also poll siren as fallback (SSE siren may not always arrive)
   useEffect(() => {

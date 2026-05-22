@@ -155,6 +155,22 @@ export default function FrontPage() {
     }
   }, [])
 
+  // Fallback polling to ensure data stays in sync
+  useEffect(() => {
+    const pollOrders = async () => {
+      try {
+        const res = await fetch("/api/orders")
+        const data = await res.json()
+        if (data.orders) {
+          processStateUpdate(data.orders)
+        }
+      } catch {}
+    }
+    // Poll every 3 seconds as fallback
+    const interval = setInterval(pollOrders, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
   const handleToggleSize = (pizzaId: string) => {
     setPizzaSizes((prev) => ({ ...prev, [pizzaId]: !prev[pizzaId] }))
   }
