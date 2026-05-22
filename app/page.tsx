@@ -5,7 +5,7 @@ import Link from "next/link"
 import { pizzas, sides, Order, PizzaBaseType } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send, Settings, BarChart3 } from "lucide-react"
+import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send, Settings, BarChart3, Clock, LogIn, LogOut } from "lucide-react"
 
 interface CartItem {
   cartItemId: string // Unique ID for each cart entry
@@ -45,6 +45,16 @@ export default function FrontPage() {
   const [pendingItems, setPendingItems] = useState<Set<string>>(new Set()) // Items with in-flight requests
   const [currentTime, setCurrentTime] = useState(Date.now())
   const [isCallingStaff, setIsCallingStaff] = useState(false)
+  const [showTimeClock, setShowTimeClock] = useState(false)
+  const [timeClockPin, setTimeClockPin] = useState("")
+  const [timeClockMessage, setTimeClockMessage] = useState<{
+    type: "success" | "error"
+    text: string
+    staffName?: string
+    weeklyHours?: { hours: number; minutes: number }
+    shiftDuration?: { hours: number; minutes: number }
+  } | null>(null)
+  const [isProcessingClock, setIsProcessingClock] = useState(false)
   
   const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
   
@@ -412,6 +422,68 @@ export default function FrontPage() {
     setTakeawayCart((prev) => prev.filter((item) => item.cartItemId !== cartItemId))
   }
 
+  const handleTimeClockPinPress = (value: string) => {
+    if (value === "backspace") {
+      setTimeClockPin((prev) => prev.slice(0, -1))
+    } else if (value === "clear") {
+      setTimeClockPin("")
+    } else if (timeClockPin.length < 4) {
+      setTimeClockPin((prev) => prev + value)
+    }
+  }
+
+  const handleClockAction = async (action: "clock_in" | "clock_out") => {
+    if (timeClockPin.length !== 4) {
+      setTimeClockMessage({ type: "error", text: "Please enter a 4-digit PIN" })
+      return
+    }
+
+    setIsProcessingClock(true)
+    setTimeClockMessage(null)
+
+    try {
+      const res = await fetch("/api/time-clock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: timeClockPin, action }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        setTimeClockMessage({ type: "error", text: data.error || "Failed to process" })
+        return
+      }
+
+      if (action === "clock_in") {
+        setTimeClockMessage({
+          type: "success",
+          text: `Clocked in successfully!`,
+          staffName: data.staff.name,
+          weeklyHours: data.weeklyHours,
+        })
+      } else {
+        setTimeClockMessage({
+          type: "success",
+          text: `Clocked out successfully!`,
+          staffName: data.staff.name,
+          shiftDuration: data.shiftDuration,
+          weeklyHours: data.weeklyHours,
+        })
+      }
+      setTimeClockPin("")
+    } catch (err) {
+      setTimeClockMessage({ type: "error", text: "Failed to connect to server" })
+    } finally {
+      setIsProcessingClock(false)
+    }
+  }
+
+  const closeTimeClock = () => {
+    setShowTimeClock(false)
+    setTimeClockPin("")
+    setTimeClockMessage(null)
+  }
+
   const handleSendToKitchen = async () => {
     if (takeawayCart.length === 0) return
     if (!takeawayOrderNumber.trim()) return // Order number is mandatory
@@ -539,6 +611,15 @@ export default function FrontPage() {
                 Statistics
               </Button>
             </Link>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-1 text-xs md:text-sm h-7 md:h-8"
+              onClick={() => setShowTimeClock(true)}
+            >
+              <Clock className="h-3.5 w-3.5 md:h-4 md:w-4" />
+              Clock In/Out
+            </Button>
           </div>
         </header>
 
@@ -812,6 +893,107 @@ export default function FrontPage() {
           </Button>
         </div>
       </div>
+
+      {/* Time Clock Modal */}
+      {showTimeClock && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card border border-border rounded-lg p-6 w-full max-w-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Staff Time Clock
+              </h2>
+              <Button variant="ghost" size="sm" onClick={closeTimeClock}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* PIN Display */}
+            <div className="bg-muted rounded-lg p-4 mb-4">
+              <div className="text-center text-sm text-muted-foreground mb-2">Enter your 4-digit PIN</div>
+              <div className="flex justify-center gap-2">
+                {[0, 1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="w-12 h-12 border-2 border-border rounded-lg flex items-center justify-center text-2xl font-bold text-foreground"
+                  >
+                    {timeClockPin[i] ? "●" : ""}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Numpad */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "backspace"].map((key) => (
+                <Button
+                  key={key}
+                  variant="outline"
+                  className="h-12 text-lg font-bold touch-manipulation active:scale-95"
+                  onClick={() => handleTimeClockPinPress(key)}
+                  disabled={isProcessingClock}
+                >
+                  {key === "clear" ? "CLR" : key === "backspace" ? <Delete className="h-5 w-5" /> : key}
+                </Button>
+              ))}
+            </div>
+
+            {/* Clock In/Out Buttons */}
+            <div className="flex gap-3">
+              <Button
+                className="flex-1 h-12 text-base font-bold bg-green-600 hover:bg-green-700 gap-2"
+                onClick={() => handleClockAction("clock_in")}
+                disabled={isProcessingClock || timeClockPin.length !== 4}
+              >
+                <LogIn className="h-5 w-5" />
+                Clock In
+              </Button>
+              <Button
+                className="flex-1 h-12 text-base font-bold bg-amber-600 hover:bg-amber-700 gap-2"
+                onClick={() => handleClockAction("clock_out")}
+                disabled={isProcessingClock || timeClockPin.length !== 4}
+              >
+                <LogOut className="h-5 w-5" />
+                Clock Out
+              </Button>
+            </div>
+
+            {/* Message Display */}
+            {timeClockMessage && (
+              <div
+                className={`mt-4 p-4 rounded-lg ${
+                  timeClockMessage.type === "success"
+                    ? "bg-green-500/20 border border-green-500/30"
+                    : "bg-red-500/20 border border-red-500/30"
+                }`}
+              >
+                {timeClockMessage.staffName && (
+                  <div className="text-lg font-bold text-foreground mb-1">
+                    {timeClockMessage.staffName}
+                  </div>
+                )}
+                <div
+                  className={`text-sm font-medium ${
+                    timeClockMessage.type === "success" ? "text-green-600" : "text-red-600"
+                  }`}
+                >
+                  {timeClockMessage.text}
+                </div>
+                {timeClockMessage.shiftDuration && (
+                  <div className="text-sm text-muted-foreground mt-1">
+                    Shift duration: {timeClockMessage.shiftDuration.hours}h {timeClockMessage.shiftDuration.minutes}m
+                  </div>
+                )}
+                {timeClockMessage.weeklyHours && (
+                  <div className="text-sm text-muted-foreground mt-1">
+                    This week: {timeClockMessage.weeklyHours.hours}h {timeClockMessage.weeklyHours.minutes}m
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
