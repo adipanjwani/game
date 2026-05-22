@@ -211,13 +211,20 @@ export default function FrontPage() {
   }, [])
 
   // Initial fetch and fallback polling to ensure data stays in sync
+  const lastPolledOrdersRef = useRef<string>("")
+  
   useEffect(() => {
     const fetchOrders = async () => {
       try {
         const res = await fetch("/api/orders")
         const data = await res.json()
         if (data.orders) {
-          processStateUpdate(data.orders)
+          // Only process if orders actually changed
+          const newOrdersJson = JSON.stringify(data.orders)
+          if (newOrdersJson !== lastPolledOrdersRef.current) {
+            lastPolledOrdersRef.current = newOrdersJson
+            processStateUpdate(data.orders)
+          }
         }
       } catch {}
     }
