@@ -18,9 +18,11 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { items, tableNumber } = body as {
+    const { items, tableNumber, orderType, orderNumber } = body as {
       items: OrderItem[]
       tableNumber?: number
+      orderType?: "front" | "takeaway"
+      orderNumber?: string
     }
 
     // Use counter + timestamp + random for guaranteed unique IDs
@@ -31,6 +33,8 @@ export async function POST(request: NextRequest) {
       status: "pending",
       createdAt: new Date(),
       tableNumber,
+      orderType: orderType || "front",
+      orderNumber,
     }
 
     addOrder(order)
