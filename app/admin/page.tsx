@@ -101,7 +101,11 @@ export default function AdminPage() {
       return
     }
     if (newStaffPin.length < 4) {
-      setStaffError("PIN must be at least 4 digits")
+      setStaffError("PIN must be exactly 4 digits")
+      return
+    }
+    if (newStaffPin.length > 4) {
+      setStaffError("PIN must be exactly 4 digits")
       return
     }
 
@@ -369,15 +373,15 @@ export default function AdminPage() {
                 className="flex-1"
               />
               <Input
-                placeholder="PIN (min 4 digits)"
+                placeholder="PIN (4 digits)"
                 type="password"
                 value={newStaffPin}
-                onChange={(e) => setNewStaffPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                onChange={(e) => setNewStaffPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                 className="flex-1 sm:max-w-[160px]"
               />
               <Button
                 onClick={handleAddStaff}
-                disabled={isAddingStaff || !newStaffName.trim() || newStaffPin.length < 4}
+                disabled={isAddingStaff || !newStaffName.trim() || newStaffPin.length !== 4}
                 className="gap-2"
               >
                 <UserPlus className="h-4 w-4" />

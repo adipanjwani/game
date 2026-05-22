@@ -35,7 +35,7 @@ export function StaffClock() {
   }
 
   const handlePinInput = (digit: string) => {
-    if (pin.length < 6) {
+    if (pin.length < 4) {
       setPin(prev => prev + digit)
     }
   }
@@ -50,8 +50,8 @@ export function StaffClock() {
   }
 
   const verifyPin = async () => {
-    if (pin.length < 4) {
-      setMessage("PIN must be at least 4 digits")
+    if (pin.length !== 4) {
+      setMessage("PIN must be exactly 4 digits")
       return
     }
 
@@ -141,7 +141,7 @@ export function StaffClock() {
           <div className="flex flex-col items-center gap-4">
             {/* PIN Display */}
             <div className="flex gap-2 my-4">
-              {[...Array(6)].map((_, i) => (
+              {[...Array(4)].map((_, i) => (
                 <div
                   key={i}
                   className={`w-10 h-12 border-2 rounded-lg flex items-center justify-center text-xl font-bold ${
@@ -197,7 +197,7 @@ export function StaffClock() {
             <Button 
               className="w-full max-w-[240px] mt-2" 
               onClick={verifyPin}
-              disabled={pin.length < 4 || isLoading}
+              disabled={pin.length !== 4 || isLoading}
             >
               {isLoading ? "Verifying..." : "Enter"}
             </Button>
