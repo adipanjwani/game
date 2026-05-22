@@ -70,6 +70,33 @@ export default function FrontPage() {
     return currentTime - orderTime > DELIVERY_TIME_LIMIT
   }
 
+  // Siren/Call Staff handlers
+  const handleSirenStart = async () => {
+    setIsCallingStaff(true)
+    try {
+      await fetch("/api/orders/siren", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: true }),
+      })
+    } catch (error) {
+      console.error("Failed to activate siren:", error)
+    }
+  }
+
+  const handleSirenStop = async () => {
+    setIsCallingStaff(false)
+    try {
+      await fetch("/api/orders/siren", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: false }),
+      })
+    } catch (error) {
+      console.error("Failed to deactivate siren:", error)
+    }
+  }
+
   // Process state update from centralized store - merge instead of replace
   const processStateUpdate = (serverOrders: Order[]) => {
     // Filter only front orders for the front display state
