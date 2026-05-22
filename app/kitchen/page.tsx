@@ -17,6 +17,8 @@ export default function KitchenPage() {
   const oscillatorRef = useRef<OscillatorNode | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
   const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const pendingOrdersRef = useRef<Order[]>([]) // Buffer for incoming orders
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [audioEnabled, setAudioEnabled] = useState(true)
   
   // Initialize AudioContext immediately on mount
@@ -64,6 +66,57 @@ export default function KitchenPage() {
   useEffect(() => {
     const eventSource = new EventSource("/api/orders/stream")
     
+    // Debounced update function to batch rapid changes
+    const applyUpdate = (serverOrders: Order[]) => {
+      setOrders((prevOrders) => {
+        // Create maps for quick lookup
+        const prevOrdersMap = new Map(prevOrders.map(o => [o.id, o]))
+        
+        // Check for new orders
+        const newOrderIds = serverOrders.filter(o => !prevOrdersMap.has(o.id))
+        if (newOrderIds.length > 0 && prevOrders.length > 0) {
+          playNotificationSound()
+        }
+        
+        // Merge orders: keep all server orders, update existing ones
+        const mergedOrders: Order[] = []
+        
+        // Add all server orders (new or updated)
+        for (const serverOrder of serverOrders) {
+          const prevOrder = prevOrdersMap.get(serverOrder.id)
+          if (prevOrder) {
+            // Update existing order only if status changed
+            if (prevOrder.status !== serverOrder.status) {
+              mergedOrders.push(serverOrder)
+            } else {
+              // Keep previous order reference to avoid re-render
+              mergedOrders.push(prevOrder)
+            }
+          } else {
+            // New order
+            mergedOrders.push(serverOrder)
+          }
+        }
+        
+        // Check if anything actually changed
+        if (mergedOrders.length !== prevOrders.length) {
+          return mergedOrders
+        }
+        
+        // Check if any order changed
+        let hasChange = false
+        for (let i = 0; i < mergedOrders.length; i++) {
+          if (mergedOrders[i] !== prevOrders[i]) {
+            hasChange = true
+            break
+          }
+        }
+        
+        return hasChange ? mergedOrders : prevOrders
+      })
+      setIsLoading(false)
+    }
+    
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
       
@@ -72,25 +125,16 @@ export default function KitchenPage() {
       if (data.type === "state_update" && data.state) {
         const serverOrders: Order[] = data.state.orders
         
-        setOrders((prevOrders) => {
-          const prevIds = new Set(prevOrders.map(o => o.id))
-          const serverIds = new Set(serverOrders.map(o => o.id))
-          
-          const newOrderIds = serverOrders.filter(o => !prevIds.has(o.id))
-          if (newOrderIds.length > 0 && prevOrders.length > 0) {
-            playNotificationSound()
-          }
-          
-          const prevStatusMap = new Map(prevOrders.map(o => [o.id, o.status]))
-          const hasStatusChange = serverOrders.some(o => prevStatusMap.get(o.id) !== o.status)
-          const hasRemovedOrders = prevOrders.some(o => !serverIds.has(o.id))
-          
-          if (newOrderIds.length > 0 || hasStatusChange || hasRemovedOrders) {
-            return serverOrders
-          }
-          return prevOrders
-        })
-        setIsLoading(false)
+        // Store in buffer
+        pendingOrdersRef.current = serverOrders
+        
+        // Debounce: wait 50ms before applying to batch rapid updates
+        if (updateTimeoutRef.current) {
+          clearTimeout(updateTimeoutRef.current)
+        }
+        updateTimeoutRef.current = setTimeout(() => {
+          applyUpdate(pendingOrdersRef.current)
+        }, 50)
       }
       
       if (data.type === "siren_update") {
@@ -104,6 +148,9 @@ export default function KitchenPage() {
     
     return () => {
       eventSource.close()
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current)
+      }
     }
   }, [playNotificationSound])
 
