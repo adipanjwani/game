@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
-import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, BarChart3, UserPlus, Users, Eye, EyeOff, CalendarDays } from "lucide-react"
+import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, BarChart3, UserPlus, Users, Eye, EyeOff, CalendarDays, Lock } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
 interface Staff {
@@ -15,7 +15,13 @@ interface Staff {
   created_at: string
 }
 
+const MASTER_PIN = "8988"
+
 export default function AdminPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [pin, setPin] = useState("")
+  const [pinError, setPinError] = useState("")
+  
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isClearing, setIsClearing] = useState(false)
@@ -29,6 +35,22 @@ export default function AdminPage() {
   const [isAddingStaff, setIsAddingStaff] = useState(false)
   const [staffError, setStaffError] = useState("")
   const [showPins, setShowPins] = useState<Record<string, boolean>>({})
+
+  const handlePinSubmit = () => {
+    if (pin === MASTER_PIN) {
+      setIsAuthenticated(true)
+      setPinError("")
+    } else {
+      setPinError("Invalid PIN")
+      setPin("")
+    }
+  }
+
+  const handlePinInput = (digit: string) => {
+    if (pin.length < 4) {
+      setPin(prev => prev + digit)
+    }
+  }
 
   const fetchOrders = async () => {
     try {
@@ -196,6 +218,87 @@ export default function AdminPage() {
   const completedOrders = orders.filter(o => o.status === "completed" || o.status === "ready")
   const frontOrders = orders.filter(o => o.orderType === "front" || !o.orderType)
   const takeawayOrders = orders.filter(o => o.orderType === "takeaway")
+
+  // PIN Entry Screen
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-dvh bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-sm">
+          <div className="bg-card border border-border rounded-lg p-6">
+            <div className="flex flex-col items-center mb-6">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                <Lock className="h-8 w-8 text-primary" />
+              </div>
+              <h1 className="text-xl font-bold text-foreground">Admin Panel</h1>
+              <p className="text-sm text-muted-foreground mt-1">Enter master PIN to continue</p>
+            </div>
+
+            {/* PIN Display */}
+            <div className="flex gap-2 justify-center mb-4">
+              {[...Array(4)].map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-12 h-12 border-2 rounded-lg flex items-center justify-center text-xl font-bold ${
+                    pin.length > i ? "border-primary bg-primary/10" : "border-border"
+                  }`}
+                >
+                  {pin.length > i ? "•" : ""}
+                </div>
+              ))}
+            </div>
+
+            {pinError && (
+              <p className="text-sm text-destructive text-center mb-4">{pinError}</p>
+            )}
+
+            {/* Number Pad */}
+            <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                <Button
+                  key={num}
+                  variant="outline"
+                  className="h-14 text-xl font-semibold"
+                  onClick={() => handlePinInput(num.toString())}
+                >
+                  {num}
+                </Button>
+              ))}
+              <Button
+                variant="outline"
+                className="h-14 text-sm"
+                onClick={() => setPin("")}
+              >
+                Clear
+              </Button>
+              <Button
+                variant="outline"
+                className="h-14 text-xl font-semibold"
+                onClick={() => handlePinInput("0")}
+              >
+                0
+              </Button>
+              <Button
+                className="h-14 text-sm"
+                onClick={handlePinSubmit}
+                disabled={pin.length !== 4}
+              >
+                Enter
+              </Button>
+            </div>
+
+            <div className="mt-6 text-center">
+              <Link href="/">
+                <Button variant="ghost" size="sm">
+                  <Home className="h-4 w-4 mr-2" />
+                  Back to Front
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-dvh bg-background p-4 md:p-6">
