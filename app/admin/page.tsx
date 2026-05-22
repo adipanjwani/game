@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
-import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, BarChart3, UserPlus, Users, Eye, EyeOff } from "lucide-react"
+import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, BarChart3, UserPlus, Users, Eye, EyeOff, CalendarDays } from "lucide-react"
 import { Input } from "@/components/ui/input"
 
 interface Staff {
@@ -208,6 +208,12 @@ export default function AdminPage() {
               <Button variant="outline" size="sm" className="gap-1">
                 <BarChart3 className="h-4 w-4" />
                 Stats
+              </Button>
+            </Link>
+            <Link href="/admin/roster">
+              <Button variant="outline" size="sm" className="gap-1">
+                <CalendarDays className="h-4 w-4" />
+                Roster
               </Button>
             </Link>
             <Link href="/">
