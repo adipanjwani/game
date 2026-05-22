@@ -84,50 +84,36 @@ export default function FrontPage() {
     setActiveOrders(cooking)
     
     // Build server-side placed orders (only from front orders)
+    // Map by item ID to order ID - for front orders, one item per order typically
     const serverPlacedOrders: Record<string, string> = {}
     const serverOrderTimes: Record<string, number> = {}
     cooking.forEach((order: Order) => {
       order.items.forEach((item) => {
         const itemId = item.pizza?.id || item.side?.id
         if (itemId) {
-          serverPlacedOrders[itemId] = order.id
-          serverOrderTimes[itemId] = new Date(order.createdAt).getTime()
+          // Only set if not already set (first order wins)
+          if (!serverPlacedOrders[itemId]) {
+            serverPlacedOrders[itemId] = order.id
+            serverOrderTimes[itemId] = new Date(order.createdAt).getTime()
+          }
         }
       })
     })
     
-    // Merge with pending (in-flight) items - don't overwrite items that are still being submitted
-    setPlacedOrders((prev) => {
-      const merged = { ...serverPlacedOrders }
-      // Keep optimistic entries for items still in-flight
-      setPendingItems((currentPending) => {
-        const stillPending = new Set<string>()
-        currentPending.forEach((itemId) => {
-          if (!serverPlacedOrders[itemId]) {
-            // Server doesn't know about this yet, keep optimistic entry
-            merged[itemId] = prev[itemId] || "pending"
-            stillPending.add(itemId)
-          }
-          // If server has it, remove from pending
-        })
-        return stillPending
+    // Clear pending items that server now has
+    setPendingItems((currentPending) => {
+      const stillPending = new Set<string>()
+      currentPending.forEach((itemId) => {
+        if (!serverPlacedOrders[itemId]) {
+          stillPending.add(itemId)
+        }
       })
-      return merged
+      return stillPending
     })
     
-    setOrderTimes((prev) => {
-      const merged = { ...serverOrderTimes }
-      // Keep optimistic times for pending items
-      setPendingItems((currentPending) => {
-        currentPending.forEach((itemId) => {
-          if (!serverOrderTimes[itemId] && prev[itemId]) {
-            merged[itemId] = prev[itemId]
-          }
-        })
-        return currentPending
-      })
-      return merged
-    })
+    // Set placed orders directly from server
+    setPlacedOrders(serverPlacedOrders)
+    setOrderTimes(serverOrderTimes)
   }
 
   // SSE for real-time state updates from centralized store
@@ -368,19 +354,22 @@ export default function FrontPage() {
     if (takeawayCart.length === 0) return
     if (!takeawayOrderNumber.trim()) return // Order number is mandatory
 
-    // Validate half pizzas are in even numbers (group by pizza id + base type)
-    const halfPizzaCounts: Record<string, number> = {}
+    // Validate half pizzas are in even numbers per base type
+    // Two halves must have the same base (15" thin or 15" thick) to make a full pizza
+    const halfPizzaCountsByBase: Record<string, number> = {}
     takeawayCart.forEach((cartItem) => {
-      if (cartItem.type === "pizza" && !cartItem.isFullPizza) {
-        const key = `${cartItem.id}-${cartItem.baseType}`
-        halfPizzaCounts[key] = (halfPizzaCounts[key] || 0) + 1
+      if (cartItem.type === "pizza" && !cartItem.isFullPizza && cartItem.baseType) {
+        halfPizzaCountsByBase[cartItem.baseType] = (halfPizzaCountsByBase[cartItem.baseType] || 0) + 1
       }
     })
     
-    // Check if any half pizza count is odd
-    const oddHalfPizzas = Object.entries(halfPizzaCounts).filter(([, count]) => count % 2 !== 0)
+    // Check if any base type has odd number of halves
+    const oddHalfPizzas = Object.entries(halfPizzaCountsByBase).filter(([, count]) => count % 2 !== 0)
     if (oddHalfPizzas.length > 0) {
-      alert("Half pizzas must be in even numbers (2 halves = 1 full pizza). Please add another half or change to full.")
+      const baseNames = oddHalfPizzas.map(([base]) => 
+        base === "15-thick" ? "15\" Thick" : "15\" Thin"
+      ).join(", ")
+      alert(`Half pizzas must be in pairs with the same base type. You have an odd number of ${baseNames} halves. Please add another half with the same base or change to full.`)
       return
     }
 

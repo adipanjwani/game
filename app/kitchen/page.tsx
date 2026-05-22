@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Order } from "@/lib/pizza-data"
-import { Pizza, AlertTriangle, Monitor, Volume2, Check, X } from "lucide-react"
+import { Pizza, AlertTriangle, Monitor, Volume2, VolumeX, Check, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
@@ -18,20 +18,78 @@ export default function KitchenPage() {
   const oscillatorRef = useRef<OscillatorNode | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
   const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const [audioEnabled, setAudioEnabled] = useState(true)
+  const [audioEnabled, setAudioEnabled] = useState(false) // Start false, enable after user interaction
+  const [audioUnlocked, setAudioUnlocked] = useState(false) // Track if audio is unlocked (for iOS)
   
-  // Initialize AudioContext immediately on mount
-  useEffect(() => {
-    const initAudio = async () => {
+  // Function to unlock and enable audio (requires user interaction on iOS)
+  const unlockAudio = useCallback(async () => {
+    try {
       if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext()
+        audioContextRef.current = new (window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
       }
+      
       if (audioContextRef.current.state === "suspended") {
         await audioContextRef.current.resume()
       }
+      
+      // Play a silent sound to fully unlock audio on iOS
+      const ctx = audioContextRef.current
+      const oscillator = ctx.createOscillator()
+      const gainNode = ctx.createGain()
+      gainNode.gain.setValueAtTime(0.001, ctx.currentTime) // Nearly silent
+      oscillator.connect(gainNode)
+      gainNode.connect(ctx.destination)
+      oscillator.start(ctx.currentTime)
+      oscillator.stop(ctx.currentTime + 0.1)
+      
+      // Play a confirmation beep
+      setTimeout(() => {
+        if (audioContextRef.current && audioContextRef.current.state === "running") {
+          const osc = audioContextRef.current.createOscillator()
+          const gain = audioContextRef.current.createGain()
+          osc.type = "sine"
+          osc.frequency.value = 880
+          gain.gain.setValueAtTime(0.2, audioContextRef.current.currentTime)
+          gain.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 0.2)
+          osc.connect(gain)
+          gain.connect(audioContextRef.current.destination)
+          osc.start()
+          osc.stop(audioContextRef.current.currentTime + 0.2)
+        }
+      }, 100)
+      
+      setAudioEnabled(true)
+      setAudioUnlocked(true)
+    } catch (error) {
+      console.error("[v0] Error unlocking audio:", error)
+    }
+  }, [])
+  
+  // Try to initialize AudioContext on mount (works on desktop, may be suspended on iOS)
+  useEffect(() => {
+    const initAudio = async () => {
+      try {
+        if (!audioContextRef.current) {
+          audioContextRef.current = new (window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+        }
+        
+        // Check if already running (desktop browsers usually allow this)
+        if (audioContextRef.current.state === "running") {
+          setAudioEnabled(true)
+          setAudioUnlocked(true)
+        } else if (audioContextRef.current.state === "suspended") {
+          // Try to resume (will work on desktop, fail silently on iOS until user interaction)
+          await audioContextRef.current.resume()
+          if (audioContextRef.current.state === "running") {
+            setAudioEnabled(true)
+            setAudioUnlocked(true)
+          }
+        }
+      } catch (error) {
+        // Silent fail - user will need to tap the button
+      }
     }
     
-    // Initialize immediately
     initAudio()
   }, [])
   
@@ -268,10 +326,22 @@ export default function KitchenPage() {
             <h1 className="text-lg md:text-xl lg:text-2xl font-bold text-foreground">Kitchen Display</h1>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-green-500 flex items-center gap-1">
-              <Volume2 className="h-3.5 w-3.5" />
-              Sound On
-            </span>
+            {!audioUnlocked ? (
+              <Button 
+                size="sm" 
+                variant="destructive" 
+                onClick={unlockAudio} 
+                className="text-xs gap-1 animate-pulse"
+              >
+                <VolumeX className="h-3.5 w-3.5" />
+                Tap for Sound
+              </Button>
+            ) : (
+              <span className="text-xs text-green-500 flex items-center gap-1">
+                <Volume2 className="h-3.5 w-3.5" />
+                Sound On
+              </span>
+            )}
             <Button asChild size="sm" className="text-xs md:text-sm">
               <Link href="/">
                 <Monitor className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" />
