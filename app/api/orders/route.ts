@@ -1,22 +1,43 @@
 import { NextRequest, NextResponse } from "next/server"
-import { Order, OrderItem } from "@/lib/pizza-data"
-import { 
-  getOrders, 
-  addOrder, 
-  updateOrder, 
-  clearCompletedOrders, 
-  clearAllOrders 
-} from "@/lib/store"
-
-// Counter for unique order IDs
-let orderCounter = 0
+import { createClient } from "@/lib/supabase/server"
+import { OrderItem } from "@/lib/pizza-data"
+import { broadcastState } from "@/lib/store"
 
 export async function GET() {
-  return NextResponse.json({ orders: getOrders() })
+  try {
+    const supabase = await createClient()
+    
+    const { data: orders, error } = await supabase
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: true })
+    
+    if (error) {
+      console.error("[v0] Supabase error fetching orders:", error)
+      return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 })
+    }
+
+    // Transform database format to app format
+    const transformedOrders = (orders || []).map(order => ({
+      id: order.id,
+      items: order.items as OrderItem[],
+      status: order.status,
+      createdAt: order.created_at,
+      tableNumber: order.table_number,
+      orderType: order.order_type,
+      orderNumber: order.order_number,
+    }))
+
+    return NextResponse.json({ orders: transformedOrders })
+  } catch (error) {
+    console.error("[v0] Error fetching orders:", error)
+    return NextResponse.json({ error: "Failed to fetch orders" }, { status: 500 })
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient()
     const body = await request.json()
     const { items, tableNumber, orderType, orderNumber } = body as {
       items: OrderItem[]
@@ -25,21 +46,42 @@ export async function POST(request: NextRequest) {
       orderNumber?: string
     }
 
-    // Use counter + timestamp + random for guaranteed unique IDs
-    orderCounter++
-    const order: Order = {
-      id: `ORD-${Date.now()}-${orderCounter}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`,
-      items,
-      status: "pending",
-      createdAt: new Date(),
-      tableNumber,
-      orderType: orderType || "front",
-      orderNumber,
+    const orderId = `ORD-${Date.now()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`
+
+    const { data: order, error } = await supabase
+      .from("orders")
+      .insert({
+        id: orderId,
+        items: items,
+        status: "pending",
+        created_at: new Date().toISOString(),
+        table_number: tableNumber || null,
+        order_type: orderType || "front",
+        order_number: orderNumber || null,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[v0] Supabase error creating order:", error)
+      return NextResponse.json({ error: "Failed to create order" }, { status: 500 })
     }
 
-    addOrder(order)
+    // Transform and broadcast
+    const transformedOrder = {
+      id: order.id,
+      items: order.items as OrderItem[],
+      status: order.status,
+      createdAt: order.created_at,
+      tableNumber: order.table_number,
+      orderType: order.order_type,
+      orderNumber: order.order_number,
+    }
 
-    return NextResponse.json({ order }, { status: 201 })
+    // Broadcast to connected SSE clients
+    broadcastState()
+
+    return NextResponse.json({ order: transformedOrder }, { status: 201 })
   } catch (error) {
     console.error("[v0] Error creating order:", error)
     return NextResponse.json({ error: "Failed to create order" }, { status: 500 })
@@ -48,18 +90,38 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const supabase = await createClient()
     const body = await request.json()
     const { orderId, status } = body as {
       orderId: string
-      status: Order["status"]
+      status: string
     }
 
-    const order = updateOrder(orderId, { status })
-    if (!order) {
+    const { data: order, error } = await supabase
+      .from("orders")
+      .update({ status })
+      .eq("id", orderId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[v0] Supabase error updating order:", error)
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ order })
+    const transformedOrder = {
+      id: order.id,
+      items: order.items as OrderItem[],
+      status: order.status,
+      createdAt: order.created_at,
+      tableNumber: order.table_number,
+      orderType: order.order_type,
+      orderNumber: order.order_number,
+    }
+
+    broadcastState()
+
+    return NextResponse.json({ order: transformedOrder })
   } catch (error) {
     console.error("[v0] Error updating order:", error)
     return NextResponse.json({ error: "Failed to update order" }, { status: 500 })
@@ -67,18 +129,44 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const action = searchParams.get("action")
+  try {
+    const supabase = await createClient()
+    const { searchParams } = new URL(request.url)
+    const action = searchParams.get("action")
 
-  if (action === "clear-completed") {
-    clearCompletedOrders()
-    return NextResponse.json({ success: true })
+    if (action === "clear-completed") {
+      const { error } = await supabase
+        .from("orders")
+        .delete()
+        .eq("status", "completed")
+
+      if (error) {
+        console.error("[v0] Supabase error clearing completed:", error)
+        return NextResponse.json({ error: "Failed to clear orders" }, { status: 500 })
+      }
+
+      broadcastState()
+      return NextResponse.json({ success: true })
+    }
+
+    if (action === "clear-all") {
+      const { error } = await supabase
+        .from("orders")
+        .delete()
+        .neq("id", "")
+
+      if (error) {
+        console.error("[v0] Supabase error clearing all:", error)
+        return NextResponse.json({ error: "Failed to clear orders" }, { status: 500 })
+      }
+
+      broadcastState()
+      return NextResponse.json({ success: true })
+    }
+
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 })
+  } catch (error) {
+    console.error("[v0] Error in delete:", error)
+    return NextResponse.json({ error: "Failed to process request" }, { status: 500 })
   }
-
-  if (action === "clear-all") {
-    clearAllOrders()
-    return NextResponse.json({ success: true })
-  }
-
-  return NextResponse.json({ error: "Invalid action" }, { status: 400 })
 }

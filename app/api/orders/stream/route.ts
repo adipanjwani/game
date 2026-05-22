@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { addClient, removeClient, sendStateToClient } from "@/lib/store"
+import { addClient, removeClient } from "@/lib/store"
 
 export const dynamic = 'force-dynamic'
 
@@ -12,8 +12,12 @@ export async function GET() {
       controllerRef = controller
       addClient(controller)
       
-      // Send current state immediately on connect
-      sendStateToClient(controller)
+      // Send initial connection message
+      try {
+        controller.enqueue(`data: ${JSON.stringify({ type: "connected" })}\n\n`)
+      } catch {
+        // Ignore errors on initial send
+      }
       
       // Keep connection alive with heartbeat every 25s
       heartbeatInterval = setInterval(() => {
