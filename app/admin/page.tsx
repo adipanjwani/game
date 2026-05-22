@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
-import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle } from "lucide-react"
+import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, BarChart3 } from "lucide-react"
 
 export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([])
@@ -104,6 +104,12 @@ export default function AdminPage() {
         <header className="flex items-center justify-between mb-6">
           <h1 className="text-2xl md:text-3xl font-bold text-foreground">Admin Panel</h1>
           <div className="flex items-center gap-2">
+            <Link href="/admin/statistics">
+              <Button variant="outline" size="sm" className="gap-1">
+                <BarChart3 className="h-4 w-4" />
+                Stats
+              </Button>
+            </Link>
             <Link href="/">
               <Button variant="outline" size="sm" className="gap-1">
                 <Home className="h-4 w-4" />
