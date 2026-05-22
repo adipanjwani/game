@@ -8,7 +8,8 @@ import { Switch } from "@/components/ui/switch"
 import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send } from "lucide-react"
 
 interface CartItem {
-  id: string
+  cartItemId: string // Unique ID for each cart entry
+  id: string // Original item ID
   name: string
   type: "pizza" | "side"
   isFullPizza: boolean
@@ -63,13 +64,19 @@ export default function FrontPage() {
 
   // Process state update from centralized store
   const processStateUpdate = (serverOrders: Order[]) => {
-    const cooking = serverOrders.filter(
+    // Filter only front orders for the front display state
+    // Takeaway orders should NOT affect the front menu item status
+    const frontOrders = serverOrders.filter((o: Order) => {
+      return o.orderType === "front" || o.orderType === undefined || o.orderType === null
+    })
+    
+    const cooking = frontOrders.filter(
       (o: Order) => o.status === "pending" || o.status === "preparing"
     )
     
     setActiveOrders(cooking)
     
-    // Build server-side placed orders
+    // Build server-side placed orders (only from front orders)
     const serverPlacedOrders: Record<string, string> = {}
     const serverOrderTimes: Record<string, number> = {}
     cooking.forEach((order: Order) => {
@@ -169,6 +176,7 @@ export default function FrontPage() {
     // For takeaway, add to cart instead of sending immediately
     if (menuMode === "takeaway") {
       const cartItem: CartItem = {
+        cartItemId: `cart-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         id: item.id,
         name: item.name,
         type,
@@ -323,44 +331,45 @@ export default function FrontPage() {
     }
   }
 
-  const handleRemoveFromCart = (index: number) => {
-    setTakeawayCart((prev) => prev.filter((_, i) => i !== index))
+  const handleRemoveFromCart = (cartItemId: string) => {
+    setTakeawayCart((prev) => prev.filter((item) => item.cartItemId !== cartItemId))
   }
 
   const handleSendToKitchen = async () => {
     if (takeawayCart.length === 0) return
+    if (!takeawayOrderNumber.trim()) return // Order number is mandatory
 
-    const orderItems = takeawayCart.map((cartItem) => {
+    // Send each cart item as a separate order to kitchen
+    const orderPromises = takeawayCart.map(async (cartItem) => {
       const item = cartItem.type === "pizza"
         ? pizzas.find((p) => p.id === cartItem.id)
         : sides.find((s) => s.id === cartItem.id)
       
-      return {
+      const orderItems = [{
         ...(cartItem.type === "pizza" ? { pizza: item } : { side: item }),
         isFullPizza: cartItem.isFullPizza,
         quantity: cartItem.quantity,
+      }]
+
+      const orderPayload: {
+        items: typeof orderItems
+        orderType: "front" | "takeaway"
+        orderNumber: string
+      } = {
+        items: orderItems,
+        orderType: "takeaway",
+        orderNumber: takeawayOrderNumber.trim(),
       }
-    })
 
-    const orderPayload: {
-      items: typeof orderItems
-      orderType: "front" | "takeaway"
-      orderNumber?: string
-    } = {
-      items: orderItems,
-      orderType: "takeaway",
-    }
-
-    if (takeawayOrderNumber.trim()) {
-      orderPayload.orderNumber = takeawayOrderNumber.trim()
-    }
-
-    try {
-      await fetch("/api/orders", {
+      return fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderPayload),
       })
+    })
+
+    try {
+      await Promise.all(orderPromises)
       
       // Clear cart and return to front mode
       setTakeawayCart([])
@@ -469,9 +478,9 @@ export default function FrontPage() {
                   <span className="text-xs text-muted-foreground">Empty - tap items to add</span>
                 ) : (
                   <div className="flex items-center gap-1">
-                    {takeawayCart.map((cartItem, index) => (
+                    {takeawayCart.map((cartItem) => (
                       <div
-                        key={index}
+                        key={cartItem.cartItemId}
                         className="flex items-center gap-1 bg-amber-500/20 rounded px-1.5 py-0.5"
                       >
                         <span className="text-xs font-medium text-foreground whitespace-nowrap">
@@ -480,7 +489,7 @@ export default function FrontPage() {
                         </span>
                         <button
                           className="text-red-500 hover:text-red-700 p-0.5 touch-manipulation"
-                          onClick={() => handleRemoveFromCart(index)}
+                          onClick={() => handleRemoveFromCart(cartItem.cartItemId)}
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -491,12 +500,12 @@ export default function FrontPage() {
               </div>
               <Button
                 size="sm"
-                className="h-8 gap-1 bg-green-600 hover:bg-green-700 text-white font-bold shrink-0"
+                className="h-8 gap-1 bg-green-600 hover:bg-green-700 text-white font-bold shrink-0 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 onClick={handleSendToKitchen}
-                disabled={takeawayCart.length === 0}
+                disabled={takeawayCart.length === 0 || !takeawayOrderNumber.trim()}
               >
                 <Send className="h-3.5 w-3.5" />
-                Send to Kitchen
+                {!takeawayOrderNumber.trim() ? "Enter Order #" : "Send to Kitchen"}
               </Button>
             </div>
           </div>

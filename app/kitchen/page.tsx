@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { Order } from "@/lib/pizza-data"
-import { Pizza, AlertTriangle, Monitor, Volume2 } from "lucide-react"
+import { Pizza, AlertTriangle, Monitor, Volume2, Check, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
@@ -11,12 +11,15 @@ export default function KitchenPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [sirenActive, setSirenActive] = useState(false)
   const [currentTime, setCurrentTime] = useState(Date.now())
+  const [selectedTakeawayOrder, setSelectedTakeawayOrder] = useState<string | null>(null)
   
   const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
   const audioContextRef = useRef<AudioContext | null>(null)
   const oscillatorRef = useRef<OscillatorNode | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
   const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const pendingOrdersRef = useRef<Order[]>([]) // Buffer for incoming orders
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [audioEnabled, setAudioEnabled] = useState(true)
   
   // Initialize AudioContext immediately on mount
@@ -64,6 +67,57 @@ export default function KitchenPage() {
   useEffect(() => {
     const eventSource = new EventSource("/api/orders/stream")
     
+    // Debounced update function to batch rapid changes
+    const applyUpdate = (serverOrders: Order[]) => {
+      setOrders((prevOrders) => {
+        // Create maps for quick lookup
+        const prevOrdersMap = new Map(prevOrders.map(o => [o.id, o]))
+        
+        // Check for new orders
+        const newOrderIds = serverOrders.filter(o => !prevOrdersMap.has(o.id))
+        if (newOrderIds.length > 0 && prevOrders.length > 0) {
+          playNotificationSound()
+        }
+        
+        // Merge orders: keep all server orders, update existing ones
+        const mergedOrders: Order[] = []
+        
+        // Add all server orders (new or updated)
+        for (const serverOrder of serverOrders) {
+          const prevOrder = prevOrdersMap.get(serverOrder.id)
+          if (prevOrder) {
+            // Update existing order only if status changed
+            if (prevOrder.status !== serverOrder.status) {
+              mergedOrders.push(serverOrder)
+            } else {
+              // Keep previous order reference to avoid re-render
+              mergedOrders.push(prevOrder)
+            }
+          } else {
+            // New order
+            mergedOrders.push(serverOrder)
+          }
+        }
+        
+        // Check if anything actually changed
+        if (mergedOrders.length !== prevOrders.length) {
+          return mergedOrders
+        }
+        
+        // Check if any order changed
+        let hasChange = false
+        for (let i = 0; i < mergedOrders.length; i++) {
+          if (mergedOrders[i] !== prevOrders[i]) {
+            hasChange = true
+            break
+          }
+        }
+        
+        return hasChange ? mergedOrders : prevOrders
+      })
+      setIsLoading(false)
+    }
+    
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
       
@@ -72,25 +126,16 @@ export default function KitchenPage() {
       if (data.type === "state_update" && data.state) {
         const serverOrders: Order[] = data.state.orders
         
-        setOrders((prevOrders) => {
-          const prevIds = new Set(prevOrders.map(o => o.id))
-          const serverIds = new Set(serverOrders.map(o => o.id))
-          
-          const newOrderIds = serverOrders.filter(o => !prevIds.has(o.id))
-          if (newOrderIds.length > 0 && prevOrders.length > 0) {
-            playNotificationSound()
-          }
-          
-          const prevStatusMap = new Map(prevOrders.map(o => [o.id, o.status]))
-          const hasStatusChange = serverOrders.some(o => prevStatusMap.get(o.id) !== o.status)
-          const hasRemovedOrders = prevOrders.some(o => !serverIds.has(o.id))
-          
-          if (newOrderIds.length > 0 || hasStatusChange || hasRemovedOrders) {
-            return serverOrders
-          }
-          return prevOrders
-        })
-        setIsLoading(false)
+        // Store in buffer
+        pendingOrdersRef.current = serverOrders
+        
+        // Debounce: wait 50ms before applying to batch rapid updates
+        if (updateTimeoutRef.current) {
+          clearTimeout(updateTimeoutRef.current)
+        }
+        updateTimeoutRef.current = setTimeout(() => {
+          applyUpdate(pendingOrdersRef.current)
+        }, 50)
       }
       
       if (data.type === "siren_update") {
@@ -104,6 +149,9 @@ export default function KitchenPage() {
     
     return () => {
       eventSource.close()
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current)
+      }
     }
   }, [playNotificationSound])
 
@@ -127,6 +175,38 @@ export default function KitchenPage() {
     }, 1000)
     return () => clearInterval(interval)
   }, [])
+
+  // Handle takeaway order delivered
+  const handleTakeawayDelivered = async (orderId: string) => {
+    // Optimistically remove from local state immediately
+    setOrders((prev) => prev.filter((o) => o.id !== orderId))
+    setSelectedTakeawayOrder(null)
+    
+    try {
+      await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      })
+    } catch (error) {
+      console.error("Failed to mark order as delivered:", error)
+    }
+  }
+
+  // Handle takeaway order cancel
+  const handleTakeawayCancel = async (orderId: string) => {
+    // Optimistically remove from local state immediately
+    setOrders((prev) => prev.filter((o) => o.id !== orderId))
+    setSelectedTakeawayOrder(null)
+    
+    try {
+      await fetch(`/api/orders/${orderId}`, {
+        method: "DELETE",
+      })
+    } catch (error) {
+      console.error("Failed to cancel order:", error)
+    }
+  }
 
   // Play siren sound when active
   useEffect(() => {
@@ -256,22 +336,37 @@ export default function KitchenPage() {
         <div className="flex-1 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-1.5 md:gap-2 lg:gap-3 auto-rows-fr overflow-y-auto overflow-x-hidden">
           {activeOrders.map((order) => {
             const overdue = isOverdue(order.createdAt)
+            const isTakeaway = order.orderType === "takeaway"
+            const isSelected = selectedTakeawayOrder === order.id
+            
             return (
             <div
               key={order.id}
               className={`border-2 rounded-lg md:rounded-xl p-2 md:p-3 lg:p-4 flex flex-col ${
                 overdue 
                   ? "bg-red-500/20 border-red-500 animate-pulse" 
-                  : "bg-card border-border"
-              }`}
+                  : isSelected
+                    ? "bg-amber-500/20 border-amber-500"
+                    : "bg-card border-border"
+              } ${isTakeaway ? "cursor-pointer" : ""}`}
+              onClick={() => {
+                if (isTakeaway) {
+                  setSelectedTakeawayOrder(isSelected ? null : order.id)
+                }
+              }}
             >
               {/* Timer and Order Type Badge */}
               <div className="flex items-center justify-between mb-1 md:mb-2">
                 <div className="flex items-center gap-1">
                   {order.orderType === "takeaway" ? (
-                    <span className="text-[10px] md:text-xs font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded">
-                      TAKEAWAY{order.orderNumber ? ` #${order.orderNumber}` : ""}
-                    </span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] md:text-xs font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded">
+                        TAKEAWAY
+                      </span>
+                      <span className="text-sm md:text-base lg:text-lg font-bold text-amber-600">
+                        #{order.orderNumber}
+                      </span>
+                    </div>
                   ) : (
                     <span className="text-[10px] md:text-xs font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded">
                       FRONT
@@ -302,6 +397,35 @@ export default function KitchenPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Takeaway Action Buttons - only show when selected */}
+              {isTakeaway && isSelected && (
+                <div className="flex gap-2 mt-2 pt-2 border-t border-border">
+                  <Button
+                    size="sm"
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold gap-1"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleTakeawayDelivered(order.id)
+                    }}
+                  >
+                    <Check className="h-4 w-4" />
+                    Delivered
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="flex-1 font-bold gap-1"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleTakeawayCancel(order.id)
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </Button>
+                </div>
+              )}
             </div>
           )})}
         </div>
