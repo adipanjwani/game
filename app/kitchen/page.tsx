@@ -356,7 +356,11 @@ export default function KitchenPage() {
                     </span>
                     <span className="text-[10px] md:text-sm lg:text-lg text-muted-foreground font-semibold">
                       {item.quantity > 1 && `${item.quantity}x `}
-                      {item.pizza && (item.isFullPizza ? "Full" : "Half")}
+                      {item.pizza && (
+                        item.baseType 
+                          ? (item.baseType === "15-thick" ? "15\" Thick" : item.baseType === "15-thin" ? "15\" Thin" : "12\" Thin")
+                          : (item.isFullPizza ? "Full" : "Half")
+                      )}
                     </span>
                   </div>
                 ))}

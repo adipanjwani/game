@@ -92,11 +92,14 @@ export const sides: Side[] = [
   },
 ]
 
+export type PizzaBaseType = "15-thick" | "15-thin" | "12-thin"
+
 export interface OrderItem {
   pizza?: Pizza
   side?: Side
   isFullPizza: boolean
   quantity: number
+  baseType?: PizzaBaseType
 }
 
 export interface Order {
