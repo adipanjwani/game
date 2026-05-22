@@ -8,12 +8,12 @@ export async function GET() {
   let controllerRef: ReadableStreamDefaultController | null = null
   
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       controllerRef = controller
       addClient(controller)
       
-      // Send current state immediately on connect
-      sendStateToClient(controller)
+      // Send current state immediately on connect (async from database)
+      await sendStateToClient(controller)
       
       // Keep connection alive with heartbeat every 25s
       heartbeatInterval = setInterval(() => {

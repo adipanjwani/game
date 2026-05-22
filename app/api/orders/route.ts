@@ -12,7 +12,8 @@ import {
 let orderCounter = 0
 
 export async function GET() {
-  return NextResponse.json({ orders: getOrders() })
+  const orders = await getOrders()
+  return NextResponse.json({ orders })
 }
 
 export async function POST(request: NextRequest) {
@@ -37,9 +38,13 @@ export async function POST(request: NextRequest) {
       orderNumber,
     }
 
-    addOrder(order)
+    const createdOrder = await addOrder(order)
+    
+    if (!createdOrder) {
+      return NextResponse.json({ error: "Failed to create order" }, { status: 500 })
+    }
 
-    return NextResponse.json({ order }, { status: 201 })
+    return NextResponse.json({ order: createdOrder }, { status: 201 })
   } catch (error) {
     console.error("[v0] Error creating order:", error)
     return NextResponse.json({ error: "Failed to create order" }, { status: 500 })
@@ -54,7 +59,7 @@ export async function PATCH(request: NextRequest) {
       status: Order["status"]
     }
 
-    const order = updateOrder(orderId, { status })
+    const order = await updateOrder(orderId, { status })
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
@@ -71,12 +76,12 @@ export async function DELETE(request: NextRequest) {
   const action = searchParams.get("action")
 
   if (action === "clear-completed") {
-    clearCompletedOrders()
+    await clearCompletedOrders()
     return NextResponse.json({ success: true })
   }
 
   if (action === "clear-all") {
-    clearAllOrders()
+    await clearAllOrders()
     return NextResponse.json({ success: true })
   }
 

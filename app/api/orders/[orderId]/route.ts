@@ -11,7 +11,7 @@ export async function PATCH(
     const body = await request.json()
     const { status } = body as { status: string }
 
-    const order = updateOrder(orderId, { status: status as "pending" | "preparing" | "ready" | "completed" })
+    const order = await updateOrder(orderId, { status: status as "pending" | "preparing" | "ready" | "completed" })
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
@@ -31,7 +31,7 @@ export async function DELETE(
   try {
     const { orderId } = await params
     
-    const removed = removeOrder(orderId)
+    const removed = await removeOrder(orderId)
     if (!removed) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }

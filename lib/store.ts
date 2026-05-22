@@ -1,87 +1,156 @@
 import { Order } from "./pizza-data"
+import { createClient } from "@supabase/supabase-js"
 
-// Centralized data store for all connected devices
-export interface AppState {
-  orders: Order[]
-  lastUpdated: number
-}
+// Supabase client for route handlers (not using cookies)
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
-// Global store persisted across hot reloads
+// SSE client management (in-memory for broadcasting)
 const globalStore = globalThis as unknown as {
-  appState: AppState
   clients: Set<ReadableStreamDefaultController>
-}
-
-if (!globalStore.appState) {
-  globalStore.appState = {
-    orders: [],
-    lastUpdated: Date.now(),
-  }
 }
 
 if (!globalStore.clients) {
   globalStore.clients = new Set()
 }
 
-// Get current state
-export function getState(): AppState {
-  return globalStore.appState
+// Database types
+interface DbOrder {
+  id: string
+  items: Order["items"]
+  status: Order["status"]
+  created_at: string
+  table_number: number | null
+  order_type: "front" | "takeaway"
+  order_number: string | null
 }
 
-// Get orders
-export function getOrders(): Order[] {
-  return globalStore.appState.orders
-}
-
-// Add an order
-export function addOrder(order: Order): void {
-  globalStore.appState.orders.push(order)
-  globalStore.appState.lastUpdated = Date.now()
-  broadcastState()
-}
-
-// Update an order
-export function updateOrder(orderId: string, updates: Partial<Order>): Order | null {
-  const order = globalStore.appState.orders.find((o) => o.id === orderId)
-  if (order) {
-    Object.assign(order, updates)
-    globalStore.appState.lastUpdated = Date.now()
-    broadcastState()
-    return order
+// Convert DB order to app order
+function dbToOrder(dbOrder: DbOrder): Order {
+  return {
+    id: dbOrder.id,
+    items: dbOrder.items,
+    status: dbOrder.status,
+    createdAt: new Date(dbOrder.created_at),
+    tableNumber: dbOrder.table_number ?? undefined,
+    orderType: dbOrder.order_type,
+    orderNumber: dbOrder.order_number ?? undefined,
   }
-  return null
 }
 
-// Remove completed orders
-export function clearCompletedOrders(): void {
-  const orders = globalStore.appState.orders
-  for (let i = orders.length - 1; i >= 0; i--) {
-    if (orders[i].status === "completed") {
-      orders.splice(i, 1)
-    }
+// Get orders from database
+export async function getOrders(): Promise<Order[]> {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*")
+    .order("created_at", { ascending: true })
+
+  if (error) {
+    console.error("[v0] Error fetching orders:", error)
+    return []
   }
-  globalStore.appState.lastUpdated = Date.now()
-  broadcastState()
+
+  return (data as DbOrder[]).map(dbToOrder)
 }
 
-// Clear all orders
-export function clearAllOrders(): void {
-  globalStore.appState.orders.splice(0, globalStore.appState.orders.length)
-  globalStore.appState.lastUpdated = Date.now()
-  broadcastState()
-}
-
-// Remove a specific order by ID
-export function removeOrder(orderId: string): boolean {
-  const orders = globalStore.appState.orders
-  const index = orders.findIndex((o) => o.id === orderId)
-  if (index !== -1) {
-    orders.splice(index, 1)
-    globalStore.appState.lastUpdated = Date.now()
-    broadcastState()
-    return true
+// Add an order to database
+export async function addOrder(order: Order): Promise<Order | null> {
+  const dbOrder = {
+    id: order.id,
+    items: order.items,
+    status: order.status,
+    created_at: order.createdAt.toISOString(),
+    table_number: order.tableNumber ?? null,
+    order_type: order.orderType || "front",
+    order_number: order.orderNumber ?? null,
   }
-  return false
+
+  const { data, error } = await supabase
+    .from("orders")
+    .insert(dbOrder)
+    .select()
+    .single()
+
+  if (error) {
+    console.error("[v0] Error adding order:", error)
+    return null
+  }
+
+  await broadcastStateFromDb()
+  return dbToOrder(data as DbOrder)
+}
+
+// Update an order in database
+export async function updateOrder(orderId: string, updates: Partial<Order>): Promise<Order | null> {
+  const dbUpdates: Record<string, unknown> = {}
+  
+  if (updates.status !== undefined) dbUpdates.status = updates.status
+  if (updates.tableNumber !== undefined) dbUpdates.table_number = updates.tableNumber
+  if (updates.orderType !== undefined) dbUpdates.order_type = updates.orderType
+  if (updates.orderNumber !== undefined) dbUpdates.order_number = updates.orderNumber
+
+  const { data, error } = await supabase
+    .from("orders")
+    .update(dbUpdates)
+    .eq("id", orderId)
+    .select()
+    .single()
+
+  if (error) {
+    console.error("[v0] Error updating order:", error)
+    return null
+  }
+
+  await broadcastStateFromDb()
+  return dbToOrder(data as DbOrder)
+}
+
+// Remove completed orders from database
+export async function clearCompletedOrders(): Promise<void> {
+  const { error } = await supabase
+    .from("orders")
+    .delete()
+    .eq("status", "completed")
+
+  if (error) {
+    console.error("[v0] Error clearing completed orders:", error)
+    return
+  }
+
+  await broadcastStateFromDb()
+}
+
+// Clear all orders from database
+export async function clearAllOrders(): Promise<void> {
+  const { error } = await supabase
+    .from("orders")
+    .delete()
+    .neq("id", "")  // Delete all rows
+
+  if (error) {
+    console.error("[v0] Error clearing all orders:", error)
+    return
+  }
+
+  await broadcastStateFromDb()
+}
+
+// Remove a specific order by ID from database
+export async function removeOrder(orderId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("orders")
+    .delete()
+    .eq("id", orderId)
+
+  if (error) {
+    console.error("[v0] Error removing order:", error)
+    return false
+  }
+
+  await broadcastStateFromDb()
+  return true
 }
 
 // SSE client management
@@ -93,14 +162,14 @@ export function removeClient(controller: ReadableStreamDefaultController): void 
   globalStore.clients.delete(controller)
 }
 
-// Broadcast full state to all connected clients
-export function broadcastState(): void {
-  const state = getState()
+// Broadcast state from database to all connected clients
+export async function broadcastStateFromDb(): Promise<void> {
+  const orders = await getOrders()
   const message = `data: ${JSON.stringify({
     type: "state_update",
     state: {
-      orders: state.orders,
-      lastUpdated: state.lastUpdated,
+      orders,
+      lastUpdated: Date.now(),
     }
   })}\n\n`
   
@@ -113,14 +182,14 @@ export function broadcastState(): void {
   })
 }
 
-// Send current state to a specific client
-export function sendStateToClient(controller: ReadableStreamDefaultController): void {
-  const state = getState()
+// Send current state to a specific client (from database)
+export async function sendStateToClient(controller: ReadableStreamDefaultController): Promise<void> {
+  const orders = await getOrders()
   const message = `data: ${JSON.stringify({
     type: "state_update",
     state: {
-      orders: state.orders,
-      lastUpdated: state.lastUpdated,
+      orders,
+      lastUpdated: Date.now(),
     }
   })}\n\n`
   
@@ -145,4 +214,13 @@ export function broadcastSiren(active: boolean): void {
       globalStore.clients.delete(controller)
     }
   })
+}
+
+// Legacy function for compatibility - now fetches from database
+export async function getState(): Promise<{ orders: Order[], lastUpdated: number }> {
+  const orders = await getOrders()
+  return {
+    orders,
+    lastUpdated: Date.now(),
+  }
 }
