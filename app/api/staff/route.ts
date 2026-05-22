@@ -1,9 +1,13 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 // Get all staff members
 export async function GET() {
-  const supabase = await createClient()
   
   const { data: staff, error } = await supabase
     .from("staff")
@@ -19,7 +23,6 @@ export async function GET() {
 
 // Create new staff member
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
   const body = await request.json()
   const { name, pin } = body
 
@@ -53,7 +56,6 @@ export async function POST(request: NextRequest) {
 
 // Update staff member
 export async function PATCH(request: NextRequest) {
-  const supabase = await createClient()
   const body = await request.json()
   const { id, name, pin, is_active } = body
 
@@ -96,7 +98,6 @@ export async function PATCH(request: NextRequest) {
 
 // Delete staff member
 export async function DELETE(request: NextRequest) {
-  const supabase = await createClient()
   const { searchParams } = new URL(request.url)
   const id = searchParams.get("id")
 

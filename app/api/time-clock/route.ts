@@ -1,9 +1,13 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 import { NextRequest, NextResponse } from "next/server"
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 // Verify PIN and get staff info + current clock status
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
   const body = await request.json()
   const { pin, action } = body
 
@@ -101,7 +105,6 @@ export async function POST(request: NextRequest) {
 
 // Get time clock records (for admin/statistics)
 export async function GET(request: NextRequest) {
-  const supabase = await createClient()
   const { searchParams } = new URL(request.url)
   const staffId = searchParams.get("staffId")
   const startDate = searchParams.get("startDate")
