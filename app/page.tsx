@@ -5,7 +5,8 @@ import Link from "next/link"
 import { pizzas, sides, Order, PizzaBaseType } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send } from "lucide-react"
+import { ChefHat, X, Plus, Minus, ShoppingBag, Delete, Send } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 
 interface CartItem {
   cartItemId: string // Unique ID for each cart entry
@@ -311,48 +312,6 @@ export default function FrontPage() {
       })
     }
     // SSE will sync the actual order ID and clear from pendingItems
-  }
-
-  const handleDelivered = async (orderId: string, itemId: string) => {
-    // Optimistic update
-    setPlacedOrders((prev) => {
-      const updated = { ...prev }
-      delete updated[itemId]
-      return updated
-    })
-    setOrderTimes((prev) => {
-      const updated = { ...prev }
-      delete updated[itemId]
-      return updated
-    })
-    
-    await fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
-    // SSE will confirm the update
-  }
-
-  const handleCancel = async (orderId: string, itemId: string) => {
-    // Optimistic update
-    setPlacedOrders((prev) => {
-      const updated = { ...prev }
-      delete updated[itemId]
-      return updated
-    })
-    setOrderTimes((prev) => {
-      const updated = { ...prev }
-      delete updated[itemId]
-      return updated
-    })
-    
-    await fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
-    // SSE will confirm the update
   }
 
   const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -741,26 +700,13 @@ export default function FrontPage() {
                         {menuMode === "takeaway" ? "Add" : "Order"}
                       </Button>
                     ) : (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="default"
-                          className="bg-green-600 hover:bg-green-700 active:bg-green-800 h-7 sm:h-8 flex-1 text-[10px] sm:text-xs font-bold touch-manipulation active:scale-95 transition-transform"
-                          onClick={() => handleDelivered(orderId, item.id)}
-                        >
-                          <span className="hidden sm:inline">Delivered</span>
-                          <Check className="h-3.5 w-3.5 sm:hidden" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="h-7 sm:h-8 flex-1 text-[10px] sm:text-xs font-bold touch-manipulation active:scale-95 transition-transform"
-                          onClick={() => handleCancel(orderId, item.id)}
-                        >
-                          <span className="hidden sm:inline">Cancel</span>
-                          <X className="h-3.5 w-3.5 sm:hidden" />
-                        </Button>
-                      </>
+                      <Badge 
+                        variant="outline" 
+                        className="h-7 sm:h-8 flex-1 flex items-center justify-center bg-amber-500/20 text-amber-700 border-amber-500/30 text-xs sm:text-sm font-bold"
+                      >
+                        <ChefHat className="h-3.5 w-3.5 mr-1" />
+                        Cooking
+                      </Badge>
                     )}
                   </div>
                 </div>
