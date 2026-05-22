@@ -538,6 +538,12 @@ export default function FrontPage() {
                 Admin
               </Button>
             </Link>
+            <Link href="/admin/statistics">
+              <Button variant="outline" size="sm" className="gap-1 text-xs md:text-sm h-7 md:h-8">
+                <BarChart3 className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                Statistics
+              </Button>
+            </Link>
           </div>
         </header>
 
