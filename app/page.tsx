@@ -84,50 +84,36 @@ export default function FrontPage() {
     setActiveOrders(cooking)
     
     // Build server-side placed orders (only from front orders)
+    // Map by item ID to order ID - for front orders, one item per order typically
     const serverPlacedOrders: Record<string, string> = {}
     const serverOrderTimes: Record<string, number> = {}
     cooking.forEach((order: Order) => {
       order.items.forEach((item) => {
         const itemId = item.pizza?.id || item.side?.id
         if (itemId) {
-          serverPlacedOrders[itemId] = order.id
-          serverOrderTimes[itemId] = new Date(order.createdAt).getTime()
+          // Only set if not already set (first order wins)
+          if (!serverPlacedOrders[itemId]) {
+            serverPlacedOrders[itemId] = order.id
+            serverOrderTimes[itemId] = new Date(order.createdAt).getTime()
+          }
         }
       })
     })
     
-    // Merge with pending (in-flight) items - don't overwrite items that are still being submitted
-    setPlacedOrders((prev) => {
-      const merged = { ...serverPlacedOrders }
-      // Keep optimistic entries for items still in-flight
-      setPendingItems((currentPending) => {
-        const stillPending = new Set<string>()
-        currentPending.forEach((itemId) => {
-          if (!serverPlacedOrders[itemId]) {
-            // Server doesn't know about this yet, keep optimistic entry
-            merged[itemId] = prev[itemId] || "pending"
-            stillPending.add(itemId)
-          }
-          // If server has it, remove from pending
-        })
-        return stillPending
+    // Clear pending items that server now has
+    setPendingItems((currentPending) => {
+      const stillPending = new Set<string>()
+      currentPending.forEach((itemId) => {
+        if (!serverPlacedOrders[itemId]) {
+          stillPending.add(itemId)
+        }
       })
-      return merged
+      return stillPending
     })
     
-    setOrderTimes((prev) => {
-      const merged = { ...serverOrderTimes }
-      // Keep optimistic times for pending items
-      setPendingItems((currentPending) => {
-        currentPending.forEach((itemId) => {
-          if (!serverOrderTimes[itemId] && prev[itemId]) {
-            merged[itemId] = prev[itemId]
-          }
-        })
-        return currentPending
-      })
-      return merged
-    })
+    // Set placed orders directly from server
+    setPlacedOrders(serverPlacedOrders)
+    setOrderTimes(serverOrderTimes)
   }
 
   // SSE for real-time state updates from centralized store
