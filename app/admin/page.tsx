@@ -179,23 +179,21 @@ export default function AdminPage() {
 
         {/* Orders List */}
         <div className="bg-card border border-border rounded-lg p-4">
-          <h2 className="text-lg font-semibold mb-4 text-foreground">All Orders</h2>
+          <h2 className="text-lg font-semibold mb-4 text-foreground">Pending Orders</h2>
           
           {isLoading ? (
             <div className="text-center py-8 text-muted-foreground">Loading...</div>
-          ) : orders.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No orders in the system</div>
+          ) : pendingOrders.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">No pending orders</div>
           ) : (
             <div className="space-y-3">
-              {orders.map((order) => (
+              {pendingOrders.map((order) => (
                 <div
                   key={order.id}
                   className={`border rounded-lg p-3 ${
-                    order.status === "completed" 
-                      ? "bg-green-500/10 border-green-500/30" 
-                      : order.orderType === "takeaway"
-                        ? "bg-amber-500/10 border-amber-500/30"
-                        : "bg-blue-500/10 border-blue-500/30"
+                    order.orderType === "takeaway"
+                      ? "bg-amber-500/10 border-amber-500/30"
+                      : "bg-blue-500/10 border-blue-500/30"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
