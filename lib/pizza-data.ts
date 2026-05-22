@@ -84,12 +84,6 @@ export const sides: Side[] = [
     description: "Crispy garlic bread with herb butter",
     price: 5.99,
   },
-  {
-    id: "wedges",
-    name: "Wedges",
-    description: "Seasoned potato wedges with sour cream",
-    price: 6.99,
-  },
 ]
 
 export type PizzaBaseType = "15-thick" | "15-thin" | "12-thin"
