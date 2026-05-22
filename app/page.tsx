@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
-import { pizzas, sides, Order } from "@/lib/pizza-data"
+import { pizzas, sides, Order, PizzaBaseType } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send } from "lucide-react"
@@ -14,12 +14,16 @@ interface CartItem {
   type: "pizza" | "side"
   isFullPizza: boolean
   quantity: number
+  baseType?: PizzaBaseType
 }
 
 export default function FrontPage() {
   const [menuMode, setMenuMode] = useState<"front" | "takeaway">("front")
   const [takeawayOrderNumber, setTakeawayOrderNumber] = useState("")
   const [takeawayCart, setTakeawayCart] = useState<CartItem[]>([])
+  const [takeawayBaseTypes, setTakeawayBaseTypes] = useState<Record<string, PizzaBaseType>>(
+    Object.fromEntries(pizzas.map((p) => [p.id, "15-thick" as PizzaBaseType]))
+  )
   const [pizzaSizes, setPizzaSizes] = useState<Record<string, boolean>>(
     Object.fromEntries(pizzas.map((p) => [p.id, true]))
   )
@@ -155,6 +159,24 @@ export default function FrontPage() {
     }
   }, [])
 
+  // Initial fetch and fallback polling to ensure data stays in sync
+  useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        const res = await fetch("/api/orders")
+        const data = await res.json()
+        if (data.orders) {
+          processStateUpdate(data.orders)
+        }
+      } catch {}
+    }
+    // Fetch immediately on mount/refresh
+    fetchOrders()
+    // Poll every 3 seconds as fallback
+    const interval = setInterval(fetchOrders, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
   const handleToggleSize = (pizzaId: string) => {
     setPizzaSizes((prev) => ({ ...prev, [pizzaId]: !prev[pizzaId] }))
   }
@@ -180,8 +202,9 @@ export default function FrontPage() {
         id: item.id,
         name: item.name,
         type,
-        isFullPizza: type === "pizza" ? pizzaSizes[id] : false,
-        quantity: quantities[id] || 1,
+        isFullPizza: true, // Takeaway pizzas are always full
+        quantity: 1, // Always quantity 1 for takeaway
+        baseType: type === "pizza" ? takeawayBaseTypes[id] : undefined,
       }
       setTakeawayCart((prev) => [...prev, cartItem])
       return
@@ -339,37 +362,32 @@ export default function FrontPage() {
     if (takeawayCart.length === 0) return
     if (!takeawayOrderNumber.trim()) return // Order number is mandatory
 
-    // Send each cart item as a separate order to kitchen
-    const orderPromises = takeawayCart.map(async (cartItem) => {
+    // Build all cart items into a single order
+    const orderItems = takeawayCart.map((cartItem) => {
       const item = cartItem.type === "pizza"
         ? pizzas.find((p) => p.id === cartItem.id)
         : sides.find((s) => s.id === cartItem.id)
       
-      const orderItems = [{
+      return {
         ...(cartItem.type === "pizza" ? { pizza: item } : { side: item }),
         isFullPizza: cartItem.isFullPizza,
         quantity: cartItem.quantity,
-      }]
-
-      const orderPayload: {
-        items: typeof orderItems
-        orderType: "front" | "takeaway"
-        orderNumber: string
-      } = {
-        items: orderItems,
-        orderType: "takeaway",
-        orderNumber: takeawayOrderNumber.trim(),
+        baseType: cartItem.baseType,
       }
+    })
 
-      return fetch("/api/orders", {
+    const orderPayload = {
+      items: orderItems,
+      orderType: "takeaway" as const,
+      orderNumber: takeawayOrderNumber.trim(),
+    }
+
+    try {
+      await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderPayload),
       })
-    })
-
-    try {
-      await Promise.all(orderPromises)
       
       // Clear cart and return to front mode
       setTakeawayCart([])
@@ -484,8 +502,12 @@ export default function FrontPage() {
                         className="flex items-center gap-1 bg-amber-500/20 rounded px-1.5 py-0.5"
                       >
                         <span className="text-xs font-medium text-foreground whitespace-nowrap">
-                          {cartItem.quantity}x {cartItem.name}
-                          {cartItem.type === "pizza" && (cartItem.isFullPizza ? " (F)" : " (H)")}
+                          {cartItem.name}
+                          {cartItem.type === "pizza" && cartItem.baseType && (
+                            <span className="text-[10px] ml-1 text-muted-foreground">
+                              ({cartItem.baseType === "15-thick" ? "15\" Thick" : cartItem.baseType === "15-thin" ? "15\" Thin" : "12\" Thin"})
+                            </span>
+                          )}
                         </span>
                         <button
                           className="text-red-500 hover:text-red-700 p-0.5 touch-manipulation"
@@ -525,52 +547,77 @@ export default function FrontPage() {
                 {/* Left: Name */}
                 <span className="text-xs sm:text-sm font-bold text-foreground whitespace-nowrap w-20 sm:w-24 shrink-0">{item.name}</span>
 
-                {/* Center: Quantity + Toggle */}
+                {/* Center: Quantity + Toggle (Front) OR Base Type (Takeaway) */}
                 <div className="flex-1 flex items-center justify-center gap-2 sm:gap-3">
-                  {/* Quantity Controls */}
-                  <div className="flex items-center gap-0.5 sm:gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 touch-manipulation active:scale-95 transition-transform"
-                      onClick={() => handleQuantityChange(item.id, -1)}
-                      disabled={isOrdered}
-                    >
-                      <Minus className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                    </Button>
-                    <span className="w-5 sm:w-6 text-center font-bold text-xs sm:text-sm">{qty}</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 w-7 sm:h-8 sm:w-8 p-0 touch-manipulation active:scale-95 transition-transform"
-                      onClick={() => handleQuantityChange(item.id, 1)}
-                      disabled={isOrdered}
-                    >
-                      <Plus className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                    </Button>
-                  </div>
-                  
-                  {isPizza && !('noSizeToggle' in item && item.noSizeToggle) && (
-                    <div className="flex items-center gap-0.5 select-none">
-                      <span 
-                        className={`text-[10px] sm:text-xs font-semibold cursor-pointer px-0.5 ${!isFullPizza ? "text-primary" : "text-muted-foreground"}`}
-                        onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: false }))}
-                      >
-                        Half
-                      </span>
-                      <Switch
-                        checked={isFullPizza}
-                        onCheckedChange={(checked) => setPizzaSizes((prev) => ({ ...prev, [item.id]: checked }))}
-                        className="scale-75 sm:scale-90"
-                      />
-                      <span 
-                        className={`text-[10px] sm:text-xs font-semibold cursor-pointer px-0.5 ${isFullPizza ? "text-primary" : "text-muted-foreground"}`}
-                        onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: true }))}
-                      >
-                        Full
-                      </span>
+                  {menuMode === "takeaway" && isPizza ? (
+                    /* Base Type Selection for Takeaway Pizzas */
+                    <div className="flex items-center gap-1">
+                      {[
+                        { value: "15-thick" as PizzaBaseType, label: "15\" Thick" },
+                        { value: "15-thin" as PizzaBaseType, label: "15\" Thin" },
+                        { value: "12-thin" as PizzaBaseType, label: "12\" Thin" },
+                      ].map((base) => (
+                        <button
+                          key={base.value}
+                          className={`px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-semibold rounded transition-colors touch-manipulation ${
+                            takeawayBaseTypes[item.id] === base.value
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80"
+                          }`}
+                          onClick={() => setTakeawayBaseTypes((prev) => ({ ...prev, [item.id]: base.value }))}
+                        >
+                          {base.label}
+                        </button>
+                      ))}
                     </div>
-                  )}
+                  ) : menuMode === "front" ? (
+                    /* Front Mode: Quantity Controls */
+                    <>
+                      <div className="flex items-center gap-0.5 sm:gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-7 sm:h-8 sm:w-8 p-0 touch-manipulation active:scale-95 transition-transform"
+                          onClick={() => handleQuantityChange(item.id, -1)}
+                          disabled={isOrdered}
+                        >
+                          <Minus className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                        </Button>
+                        <span className="w-5 sm:w-6 text-center font-bold text-xs sm:text-sm">{qty}</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-7 sm:h-8 sm:w-8 p-0 touch-manipulation active:scale-95 transition-transform"
+                          onClick={() => handleQuantityChange(item.id, 1)}
+                          disabled={isOrdered}
+                        >
+                          <Plus className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                        </Button>
+                      </div>
+                      
+                      {isPizza && !('noSizeToggle' in item && item.noSizeToggle) && (
+                        <div className="flex items-center gap-0.5 select-none">
+                          <span 
+                            className={`text-[10px] sm:text-xs font-semibold cursor-pointer px-0.5 ${!isFullPizza ? "text-primary" : "text-muted-foreground"}`}
+                            onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: false }))}
+                          >
+                            Half
+                          </span>
+                          <Switch
+                            checked={isFullPizza}
+                            onCheckedChange={(checked) => setPizzaSizes((prev) => ({ ...prev, [item.id]: checked }))}
+                            className="scale-75 sm:scale-90"
+                          />
+                          <span 
+                            className={`text-[10px] sm:text-xs font-semibold cursor-pointer px-0.5 ${isFullPizza ? "text-primary" : "text-muted-foreground"}`}
+                            onClick={() => setPizzaSizes((prev) => ({ ...prev, [item.id]: true }))}
+                          >
+                            Full
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  ) : null}
                 </div>
 
                 {/* Right: Timer + Buttons */}
