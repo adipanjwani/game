@@ -6,6 +6,7 @@ import { pizzas, sides, Order, PizzaBaseType } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send, Settings } from "lucide-react"
+import { StaffClock } from "@/components/staff-clock"
 
 interface CartItem {
   cartItemId: string // Unique ID for each cart entry
@@ -522,6 +523,7 @@ export default function FrontPage() {
                 Admin
               </Button>
             </Link>
+            <StaffClock />
           </div>
         </header>
 

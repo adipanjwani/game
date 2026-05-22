@@ -4,13 +4,31 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
-import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, BarChart3 } from "lucide-react"
+import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, BarChart3, UserPlus, Users, Eye, EyeOff } from "lucide-react"
+import { Input } from "@/components/ui/input"
+
+interface Staff {
+  id: string
+  name: string
+  pin: string
+  is_active: boolean
+  created_at: string
+}
 
 export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isClearing, setIsClearing] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+  
+  // Staff management state
+  const [staff, setStaff] = useState<Staff[]>([])
+  const [isLoadingStaff, setIsLoadingStaff] = useState(true)
+  const [newStaffName, setNewStaffName] = useState("")
+  const [newStaffPin, setNewStaffPin] = useState("")
+  const [isAddingStaff, setIsAddingStaff] = useState(false)
+  const [staffError, setStaffError] = useState("")
+  const [showPins, setShowPins] = useState<Record<string, boolean>>({})
 
   const fetchOrders = async () => {
     try {
@@ -58,10 +76,88 @@ export default function AdminPage() {
 
   useEffect(() => {
     fetchOrders()
+    fetchStaff()
     // Poll every 2 seconds
     const interval = setInterval(fetchOrders, 2000)
     return () => clearInterval(interval)
   }, [])
+
+  const fetchStaff = async () => {
+    try {
+      const res = await fetch("/api/staff")
+      const data = await res.json()
+      if (Array.isArray(data)) {
+        setStaff(data)
+      }
+    } catch (error) {
+      console.error("Failed to fetch staff:", error)
+    }
+    setIsLoadingStaff(false)
+  }
+
+  const handleAddStaff = async () => {
+    if (!newStaffName.trim() || !newStaffPin.trim()) {
+      setStaffError("Name and PIN are required")
+      return
+    }
+    if (newStaffPin.length < 4) {
+      setStaffError("PIN must be at least 4 digits")
+      return
+    }
+
+    setIsAddingStaff(true)
+    setStaffError("")
+
+    try {
+      const res = await fetch("/api/staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newStaffName.trim(), pin: newStaffPin.trim() }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        setStaffError(data.error || "Failed to add staff")
+      } else {
+        setNewStaffName("")
+        setNewStaffPin("")
+        fetchStaff()
+      }
+    } catch {
+      setStaffError("Failed to add staff")
+    }
+    setIsAddingStaff(false)
+  }
+
+  const handleToggleStaffActive = async (staffMember: Staff) => {
+    try {
+      await fetch("/api/staff", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: staffMember.id, is_active: !staffMember.is_active }),
+      })
+      fetchStaff()
+    } catch (error) {
+      console.error("Failed to update staff:", error)
+    }
+  }
+
+  const handleDeleteStaff = async (staffId: string) => {
+    if (!confirm("Are you sure you want to delete this staff member? This will also delete their time clock records.")) {
+      return
+    }
+
+    try {
+      await fetch(`/api/staff?id=${staffId}`, { method: "DELETE" })
+      fetchStaff()
+    } catch (error) {
+      console.error("Failed to delete staff:", error)
+    }
+  }
+
+  const toggleShowPin = (staffId: string) => {
+    setShowPins(prev => ({ ...prev, [staffId]: !prev[staffId] }))
+  }
 
   const handleClearAll = async () => {
     if (!confirm("Are you sure you want to clear ALL orders? This cannot be undone.")) {
@@ -245,6 +341,106 @@ export default function AdminPage() {
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
                     ID: {order.id}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Staff Management */}
+        <div className="bg-card border border-border rounded-lg p-4 mt-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="h-5 w-5 text-foreground" />
+            <h2 className="text-lg font-semibold text-foreground">Staff Management</h2>
+          </div>
+
+          {/* Add New Staff */}
+          <div className="bg-muted/50 rounded-lg p-4 mb-4">
+            <h3 className="text-sm font-medium mb-3 text-foreground flex items-center gap-2">
+              <UserPlus className="h-4 w-4" />
+              Add New Staff
+            </h3>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Input
+                placeholder="Staff name"
+                value={newStaffName}
+                onChange={(e) => setNewStaffName(e.target.value)}
+                className="flex-1"
+              />
+              <Input
+                placeholder="PIN (min 4 digits)"
+                type="password"
+                value={newStaffPin}
+                onChange={(e) => setNewStaffPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                className="flex-1 sm:max-w-[160px]"
+              />
+              <Button
+                onClick={handleAddStaff}
+                disabled={isAddingStaff || !newStaffName.trim() || newStaffPin.length < 4}
+                className="gap-2"
+              >
+                <UserPlus className="h-4 w-4" />
+                {isAddingStaff ? "Adding..." : "Add Staff"}
+              </Button>
+            </div>
+            {staffError && (
+              <p className="text-sm text-destructive mt-2">{staffError}</p>
+            )}
+          </div>
+
+          {/* Staff List */}
+          {isLoadingStaff ? (
+            <div className="text-center py-4 text-muted-foreground">Loading staff...</div>
+          ) : staff.length === 0 ? (
+            <div className="text-center py-4 text-muted-foreground">No staff members added yet</div>
+          ) : (
+            <div className="space-y-2">
+              {staff.map((member) => (
+                <div
+                  key={member.id}
+                  className={`flex items-center justify-between p-3 rounded-lg border ${
+                    member.is_active
+                      ? "bg-green-500/10 border-green-500/30"
+                      : "bg-muted/50 border-border opacity-60"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <div className="font-medium text-foreground">{member.name}</div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>PIN: </span>
+                        <span className="font-mono">
+                          {showPins[member.id] ? member.pin : "••••"}
+                        </span>
+                        <button
+                          onClick={() => toggleShowPin(member.id)}
+                          className="hover:text-foreground"
+                        >
+                          {showPins[member.id] ? (
+                            <EyeOff className="h-3 w-3" />
+                          ) : (
+                            <Eye className="h-3 w-3" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant={member.is_active ? "secondary" : "default"}
+                      size="sm"
+                      onClick={() => handleToggleStaffActive(member)}
+                    >
+                      {member.is_active ? "Deactivate" : "Activate"}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleDeleteStaff(member.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               ))}
