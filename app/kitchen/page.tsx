@@ -100,19 +100,22 @@ export default function KitchenPage() {
     }
   }, [playNotificationSound])
 
-  // Fallback polling to ensure data stays in sync
+  // Initial fetch and fallback polling to ensure data stays in sync
   useEffect(() => {
-    const pollOrders = async () => {
+    const fetchOrders = async () => {
       try {
         const res = await fetch("/api/orders")
         const data = await res.json()
         if (data.orders) {
           setOrders(data.orders)
+          setIsLoading(false)
         }
       } catch {}
     }
+    // Fetch immediately on mount/refresh
+    fetchOrders()
     // Poll every 3 seconds as fallback
-    const interval = setInterval(pollOrders, 3000)
+    const interval = setInterval(fetchOrders, 3000)
     return () => clearInterval(interval)
   }, [])
 
