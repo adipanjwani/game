@@ -44,6 +44,7 @@ export default function FrontPage() {
   const [orderTimes, setOrderTimes] = useState<Record<string, number>>({}) // Track when each item was ordered
   const [pendingItems, setPendingItems] = useState<Set<string>>(new Set()) // Items with in-flight requests
   const [currentTime, setCurrentTime] = useState(Date.now())
+  const [localOrderQueue, setLocalOrderQueue] = useState<Array<{ items: unknown[], orderType: string, orderNumber?: string }>>([]) // Local queue for orders
   const [isCallingStaff, setIsCallingStaff] = useState(false)
   
   const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
@@ -222,10 +223,38 @@ export default function FrontPage() {
     }
     // Fetch immediately on mount/refresh
     fetchOrders()
-    // Poll every 2 seconds to sync with admin panel
-    const interval = setInterval(fetchOrders, 2000)
+    // Poll every 1 second to sync with server
+    const interval = setInterval(fetchOrders, 1000)
     return () => clearInterval(interval)
   }, [])
+
+  // Send queued orders to server every 1 second
+  useEffect(() => {
+    const sendQueuedOrders = async () => {
+      if (localOrderQueue.length === 0) return
+      
+      // Get all orders from queue and clear it
+      const ordersToSend = [...localOrderQueue]
+      setLocalOrderQueue([])
+      
+      // Send each order to server
+      for (const orderPayload of ordersToSend) {
+        try {
+          await fetch("/api/orders", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(orderPayload),
+          })
+        } catch (error) {
+          // If failed, add back to queue
+          setLocalOrderQueue((prev) => [...prev, orderPayload])
+        }
+      }
+    }
+    
+    const interval = setInterval(sendQueuedOrders, 1000)
+    return () => clearInterval(interval)
+  }, [localOrderQueue])
 
   const handleToggleSize = (pizzaId: string) => {
     setPizzaSizes((prev) => ({ ...prev, [pizzaId]: !prev[pizzaId] }))
@@ -263,7 +292,7 @@ export default function FrontPage() {
       return
     }
 
-    // For front orders, send immediately (existing behavior)
+// For front orders, add to local queue (will be sent to server every second)
     // Mark as pending (in-flight) so SSE updates don't overwrite
     setPendingItems((prev) => new Set(prev).add(id))
     
@@ -277,125 +306,14 @@ export default function FrontPage() {
       quantity: quantities[id] || 1,
     }]
 
-    const orderPayload: { 
-      items: typeof orderItems
-      orderType: "front" | "takeaway"
-      orderNumber?: string 
-    } = {
+    const orderPayload = {
       items: orderItems,
-      orderType: "front",
+      orderType: "front" as const,
     }
 
-    try {
-      await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(orderPayload),
-      })
-    } catch (error) {
-      // Revert optimistic update on failure
-      setPendingItems((prev) => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-      setPlacedOrders((prev) => {
-        const updated = { ...prev }
-        delete updated[id]
-        return updated
-      })
-      setOrderTimes((prev) => {
-        const updated = { ...prev }
-        delete updated[id]
-        return updated
-      })
-    }
-    // SSE will sync the actual order ID and clear from pendingItems
+    // Add to local queue instead of sending directly
+    setLocalOrderQueue((prev) => [...prev, orderPayload])
   }
-
-  const handleDelivered = async (orderId: string, itemId: string) => {
-    // Optimistic update
-    setPlacedOrders((prev) => {
-      const updated = { ...prev }
-      delete updated[itemId]
-      return updated
-    })
-    setOrderTimes((prev) => {
-      const updated = { ...prev }
-      delete updated[itemId]
-      return updated
-    })
-    
-    await fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
-    // SSE will confirm the update
-  }
-
-  const handleCancel = async (orderId: string, itemId: string) => {
-    // Optimistic update
-    setPlacedOrders((prev) => {
-      const updated = { ...prev }
-      delete updated[itemId]
-      return updated
-    })
-    setOrderTimes((prev) => {
-      const updated = { ...prev }
-      delete updated[itemId]
-      return updated
-    })
-    
-    await fetch("/api/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
-    })
-    // SSE will confirm the update
-  }
-
-  const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)
-
-  const handleSirenStart = () => {
-    setIsCallingStaff(true)
-    // Send immediately
-    fetch("/api/siren", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active: true }),
-    })
-    // Keep sending every 200ms to keep siren alive (server auto-deactivates after 500ms)
-    sirenIntervalRef.current = setInterval(() => {
-      fetch("/api/siren", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ active: true }),
-      })
-    }, 200)
-  }
-
-  const handleSirenStop = () => {
-    setIsCallingStaff(false)
-    if (sirenIntervalRef.current) {
-      clearInterval(sirenIntervalRef.current)
-      sirenIntervalRef.current = null
-    }
-    fetch("/api/siren", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active: false }),
-    })
-  }
-
-  // Clean up siren interval on unmount
-  useEffect(() => {
-    return () => {
-      if (sirenIntervalRef.current) {
-        clearInterval(sirenIntervalRef.current)
-      }
-    }
-  }, [])
 
   const handleNumpadPress = (value: string) => {
     if (value === "backspace") {
