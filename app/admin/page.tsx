@@ -12,6 +12,12 @@ export default function AdminPage() {
   const [isClearing, setIsClearing] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
   const [currentTime, setCurrentTime] = useState<Date>(new Date())
+  const [isMounted, setIsMounted] = useState(false)
+
+  // Set mounted state
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   // Clock update
   useEffect(() => {
@@ -109,7 +115,7 @@ export default function AdminPage() {
             <h1 className="text-2xl md:text-3xl font-bold text-foreground">Admin Panel</h1>
             <div className="flex items-center gap-1.5 text-lg font-mono font-bold text-muted-foreground">
               <Clock className="h-5 w-5" />
-              {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {isMounted ? currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : "--:--:--"}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -207,7 +213,7 @@ export default function AdminPage() {
 
         {/* Last Refresh */}
         <div className="text-sm text-muted-foreground mb-4">
-          Last refreshed: {lastRefresh.toLocaleTimeString()}
+          Last refreshed: {isMounted ? lastRefresh.toLocaleTimeString() : "--:--:--"}
         </div>
 
         {/* Orders List */}
