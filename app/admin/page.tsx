@@ -119,7 +119,7 @@ export default function AdminPage() {
                 Staff
               </Button>
             </Link>
-            <Link href="/admin/timesheet">
+            <Link href="/admin/staff/timesheet">
               <Button variant="outline" size="sm" className="gap-1">
                 <CalendarDays className="h-4 w-4" />
                 Timesheet

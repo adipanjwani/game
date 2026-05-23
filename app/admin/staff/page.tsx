@@ -236,7 +236,7 @@ export default function StaffManagementPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Link href="/admin/timesheet">
+            <Link href="/admin/staff/timesheet">
               <Button variant="outline" size="sm" className="gap-1">
                 <Clock className="h-4 w-4" />
                 Timesheet

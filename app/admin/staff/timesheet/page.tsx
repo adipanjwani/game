@@ -279,7 +279,7 @@ export default function TimesheetPage() {
         {/* Header */}
         <header className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <Link href="/admin">
+            <Link href="/admin/staff">
               <Button variant="ghost" size="sm" className="gap-1">
                 <ArrowLeft className="h-4 w-4" />
                 Back
