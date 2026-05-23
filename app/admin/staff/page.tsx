@@ -33,21 +33,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Home, ChefHat, Plus, Pencil, Trash2, Users, ArrowLeft, Eye, EyeOff, Clock, ChevronDown, ChevronUp } from "lucide-react"
+import { Home, ChefHat, Plus, Pencil, Trash2, Users, ArrowLeft, Eye, EyeOff, Clock } from "lucide-react"
 
 interface Staff {
   id: string
   name: string
   pin: string
   is_active: boolean
-  created_at: string
-}
-
-interface TimeClockEntry {
-  id: string
-  staff_id: string
-  clock_in: string
-  clock_out: string | null
   created_at: string
 }
 
@@ -62,9 +54,6 @@ export default function StaffManagementPage() {
   const [error, setError] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [showPins, setShowPins] = useState<Record<string, boolean>>({})
-  const [expandedStaff, setExpandedStaff] = useState<string | null>(null)
-  const [timeClockEntries, setTimeClockEntries] = useState<TimeClockEntry[]>([])
-  const [loadingEntries, setLoadingEntries] = useState(false)
 
   const supabase = createClient()
 
@@ -229,49 +218,6 @@ export default function StaffManagementPage() {
     setFormData((prev) => ({ ...prev, pin: digits }))
   }
 
-  const fetchTimeClockEntries = async (staffId: string) => {
-    setLoadingEntries(true)
-    const { data, error } = await supabase
-      .from("time_clock")
-      .select("*")
-      .eq("staff_id", staffId)
-      .order("clock_in", { ascending: false })
-      .limit(50)
-
-    if (error) {
-      console.error("Failed to fetch time clock entries:", error)
-    } else {
-      setTimeClockEntries(data || [])
-    }
-    setLoadingEntries(false)
-  }
-
-  const toggleExpandStaff = async (staffId: string) => {
-    if (expandedStaff === staffId) {
-      setExpandedStaff(null)
-      setTimeClockEntries([])
-    } else {
-      setExpandedStaff(staffId)
-      await fetchTimeClockEntries(staffId)
-    }
-  }
-
-  const formatDateTime = (dateString: string) => {
-    const date = new Date(dateString)
-    return {
-      date: date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
-      time: date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    }
-  }
-
-  const calculateHours = (clockIn: string, clockOut: string | null): string => {
-    if (!clockOut) return "In Progress"
-    const start = new Date(clockIn)
-    const end = new Date(clockOut)
-    const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60)
-    return hours.toFixed(2) + " hrs"
-  }
-
   return (
     <div className="min-h-dvh bg-background p-4 md:p-6">
       <div className="max-w-4xl mx-auto">
@@ -290,6 +236,12 @@ export default function StaffManagementPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/admin/timesheet">
+              <Button variant="outline" size="sm" className="gap-1">
+                <Clock className="h-4 w-4" />
+                Timesheet
+              </Button>
+            </Link>
             <Link href="/">
               <Button variant="outline" size="sm" className="gap-1">
                 <Home className="h-4 w-4" />
@@ -334,125 +286,63 @@ export default function StaffManagementPage() {
               </TableHeader>
               <TableBody>
                 {staff.map((member) => (
-                  <>
-                    <TableRow key={member.id} className="cursor-pointer hover:bg-muted/50" onClick={() => toggleExpandStaff(member.id)}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          {expandedStaff === member.id ? (
-                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                          )}
-                          {member.name}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                          <span className="font-mono">
-                            {showPins[member.id] ? member.pin : "••••"}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            onClick={() => togglePinVisibility(member.id)}
-                          >
-                            {showPins[member.id] ? (
-                              <EyeOff className="h-3.5 w-3.5" />
-                            ) : (
-                              <Eye className="h-3.5 w-3.5" />
-                            )}
-                          </Button>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            member.is_active
-                              ? "bg-green-500/20 text-green-600"
-                              : "bg-red-500/20 text-red-600"
-                          }`}
-                        >
-                          {member.is_active ? "Active" : "Inactive"}
+                  <TableRow key={member.id}>
+                    <TableCell className="font-medium">{member.name}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono">
+                          {showPins[member.id] ? member.pin : "••••"}
                         </span>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {new Date(member.created_at).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="gap-1"
-                            onClick={() => openEditDialog(member)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            Edit
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            className="gap-1"
-                            onClick={() => openDeleteDialog(member)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    {/* Time Clock Entries */}
-                    {expandedStaff === member.id && (
-                      <TableRow key={`${member.id}-entries`}>
-                        <TableCell colSpan={5} className="p-0 bg-muted/30">
-                          <div className="p-4">
-                            <div className="flex items-center gap-2 mb-3">
-                              <Clock className="h-4 w-4 text-primary" />
-                              <h4 className="font-semibold text-sm">Time Clock History</h4>
-                            </div>
-                            {loadingEntries ? (
-                              <p className="text-sm text-muted-foreground py-4 text-center">Loading entries...</p>
-                            ) : timeClockEntries.length === 0 ? (
-                              <p className="text-sm text-muted-foreground py-4 text-center">No time clock entries found</p>
-                            ) : (
-                              <div className="border border-border rounded-lg overflow-hidden">
-                                <Table>
-                                  <TableHeader>
-                                    <TableRow className="bg-muted/50">
-                                      <TableHead className="text-xs">Date</TableHead>
-                                      <TableHead className="text-xs">Clock In</TableHead>
-                                      <TableHead className="text-xs">Clock Out</TableHead>
-                                      <TableHead className="text-xs text-right">Total Hours</TableHead>
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    {timeClockEntries.map((entry) => {
-                                      const clockIn = formatDateTime(entry.clock_in)
-                                      const clockOut = entry.clock_out ? formatDateTime(entry.clock_out) : null
-                                      return (
-                                        <TableRow key={entry.id}>
-                                          <TableCell className="text-sm">{clockIn.date}</TableCell>
-                                          <TableCell className="text-sm font-mono">{clockIn.time}</TableCell>
-                                          <TableCell className="text-sm font-mono">
-                                            {clockOut ? clockOut.time : (
-                                              <span className="text-green-600 font-medium">Active</span>
-                                            )}
-                                          </TableCell>
-                                          <TableCell className="text-sm text-right font-mono font-medium">
-                                            {calculateHours(entry.clock_in, entry.clock_out)}
-                                          </TableCell>
-                                        </TableRow>
-                                      )
-                                    })}
-                                  </TableBody>
-                                </Table>
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => togglePinVisibility(member.id)}
+                        >
+                          {showPins[member.id] ? (
+                            <EyeOff className="h-3.5 w-3.5" />
+                          ) : (
+                            <Eye className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          member.is_active
+                            ? "bg-green-500/20 text-green-600"
+                            : "bg-red-500/20 text-red-600"
+                        }`}
+                      >
+                        {member.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(member.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => openEditDialog(member)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => openDeleteDialog(member)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
               </TableBody>
             </Table>
