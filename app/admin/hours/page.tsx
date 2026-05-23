@@ -39,9 +39,10 @@ interface StaffHours {
   totalHours: number
   totalShifts: number
   avgHoursPerShift: number
+  lastClockIn: Date | null
 }
 
-type SortField = "name" | "hours" | "shifts" | "avg"
+type SortField = "name" | "hours" | "shifts" | "avg" | "clockin"
 type SortDirection = "asc" | "desc"
 type DateRange = "week" | "month" | "year" | "all"
 
@@ -126,10 +127,10 @@ export default function StaffHoursPage() {
     }
 
     // Calculate hours per staff
-    const hoursMap = new Map<string, { totalHours: number; shifts: number }>()
+    const hoursMap = new Map<string, { totalHours: number; shifts: number; lastClockIn: Date | null }>()
 
     staffData.forEach((staff) => {
-      hoursMap.set(staff.id, { totalHours: 0, shifts: 0 })
+      hoursMap.set(staff.id, { totalHours: 0, shifts: 0, lastClockIn: null })
     })
 
     ;(entriesData || []).forEach((entry) => {
@@ -141,16 +142,20 @@ export default function StaffHoursPage() {
       if (existing) {
         existing.totalHours += hours
         existing.shifts += 1
+        if (!existing.lastClockIn || clockIn > existing.lastClockIn) {
+          existing.lastClockIn = clockIn
+        }
       }
     })
 
     const result: StaffHours[] = staffData.map((staff) => {
-      const data = hoursMap.get(staff.id) || { totalHours: 0, shifts: 0 }
+      const data = hoursMap.get(staff.id) || { totalHours: 0, shifts: 0, lastClockIn: null }
       return {
         staff,
         totalHours: data.totalHours,
         totalShifts: data.shifts,
         avgHoursPerShift: data.shifts > 0 ? data.totalHours / data.shifts : 0,
+        lastClockIn: data.lastClockIn,
       }
     })
 
@@ -219,6 +224,10 @@ export default function StaffHoursPage() {
       comparison = a.totalShifts - b.totalShifts
     } else if (sortField === "avg") {
       comparison = a.avgHoursPerShift - b.avgHoursPerShift
+    } else if (sortField === "clockin") {
+      const timeA = a.lastClockIn ? a.lastClockIn.getTime() : 0
+      const timeB = b.lastClockIn ? b.lastClockIn.getTime() : 0
+      comparison = timeA - timeB
     }
 
     return sortDirection === "asc" ? comparison : -comparison
@@ -323,6 +332,15 @@ export default function StaffHoursPage() {
                   </TableHead>
                   <TableHead className="min-w-[80px] text-center">Status</TableHead>
                   <TableHead
+                    className="min-w-[140px] text-right cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort("clockin")}
+                  >
+                    <div className="flex items-center justify-end">
+                      Last Clock In
+                      {getSortIcon("clockin")}
+                    </div>
+                  </TableHead>
+                  <TableHead
                     className="min-w-[100px] text-right cursor-pointer hover:bg-muted/50 select-none"
                     onClick={() => handleSort("shifts")}
                   >
@@ -354,7 +372,7 @@ export default function StaffHoursPage() {
               <TableBody>
                 {sortedStaffHours.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       No staff found
                     </TableCell>
                   </TableRow>
@@ -374,6 +392,16 @@ export default function StaffHoursPage() {
                             {item.staff.is_active ? "Active" : "Inactive"}
                           </span>
                         </TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {item.lastClockIn ? (
+                            <div className="flex flex-col items-end">
+                              <span>{item.lastClockIn.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                              <span className="text-muted-foreground text-xs">{item.lastClockIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right font-mono">{item.totalShifts}</TableCell>
                         <TableCell className="text-right font-mono font-medium">
                           {item.totalHours.toFixed(2)}
@@ -386,6 +414,7 @@ export default function StaffHoursPage() {
                     {/* Total Row */}
                     <TableRow className="bg-muted/50 font-semibold">
                       <TableCell>Total</TableCell>
+                      <TableCell></TableCell>
                       <TableCell></TableCell>
                       <TableCell className="text-right font-mono">{totalAllShifts}</TableCell>
                       <TableCell className="text-right font-mono">{totalAllHours.toFixed(2)}</TableCell>
