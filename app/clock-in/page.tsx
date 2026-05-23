@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Clock, ArrowLeft, Delete, LogIn, LogOut, User, Check } from "lucide-react"
+import { Clock, ArrowLeft, Delete, LogIn, LogOut, User, Check, Calendar } from "lucide-react"
 import Link from "next/link"
 
 interface StaffMember {
@@ -19,6 +19,22 @@ interface TimeClockEntry {
   clock_out: string | null
 }
 
+interface WeeklyEntry {
+  date: string
+  dayName: string
+  hoursWorked: number
+  clockIn: string
+  clockOut: string
+}
+
+interface ClockOutSummary {
+  shiftHours: number
+  shiftClockIn: string
+  shiftClockOut: string
+  weeklyEntries: WeeklyEntry[]
+  totalWeekHours: number
+}
+
 export default function ClockInPage() {
   const [pin, setPin] = useState("")
   const [staff, setStaff] = useState<StaffMember | null>(null)
@@ -26,6 +42,7 @@ export default function ClockInPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [clockOutSummary, setClockOutSummary] = useState<ClockOutSummary | null>(null)
   const [currentTime, setCurrentTime] = useState(new Date())
 
   const supabase = createClient()
@@ -130,10 +147,12 @@ export default function ClockInPage() {
     setError(null)
     setSuccess(null)
 
+    const clockOutTime = new Date()
+
     const { error: updateError } = await supabase
       .from("time_clock")
       .update({
-        clock_out: new Date().toISOString(),
+        clock_out: clockOutTime.toISOString(),
       })
       .eq("id", currentEntry.id)
 
@@ -144,11 +163,54 @@ export default function ClockInPage() {
     }
 
     const clockInTime = new Date(currentEntry.clock_in)
-    const clockOutTime = new Date()
-    const hoursWorked = (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60)
+    const shiftHours = (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60)
+
+    // Get current week's entries (Monday to Sunday)
+    const today = new Date()
+    const dayOfWeek = today.getDay()
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    const monday = new Date(today)
+    monday.setDate(today.getDate() + mondayOffset)
+    monday.setHours(0, 0, 0, 0)
+    
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    sunday.setHours(23, 59, 59, 999)
+
+    const { data: weekEntries } = await supabase
+      .from("time_clock")
+      .select("*")
+      .eq("staff_id", staff.id)
+      .not("clock_out", "is", null)
+      .gte("clock_in", monday.toISOString())
+      .lte("clock_in", sunday.toISOString())
+      .order("clock_in", { ascending: true })
+
+    const weeklyEntries: WeeklyEntry[] = (weekEntries || []).map((entry) => {
+      const entryClockIn = new Date(entry.clock_in)
+      const entryClockOut = new Date(entry.clock_out)
+      const hours = (entryClockOut.getTime() - entryClockIn.getTime()) / (1000 * 60 * 60)
+      
+      return {
+        date: entryClockIn.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        dayName: entryClockIn.toLocaleDateString("en-US", { weekday: "long" }),
+        hoursWorked: hours,
+        clockIn: entryClockIn.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        clockOut: entryClockOut.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      }
+    })
+
+    const totalWeekHours = weeklyEntries.reduce((sum, entry) => sum + entry.hoursWorked, 0)
+
+    setClockOutSummary({
+      shiftHours,
+      shiftClockIn: clockInTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      shiftClockOut: clockOutTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      weeklyEntries,
+      totalWeekHours,
+    })
 
     setCurrentEntry(null)
-    setSuccess(`Clocked out. Total time: ${hoursWorked.toFixed(2)} hours`)
     setIsLoading(false)
   }
 
@@ -159,6 +221,7 @@ export default function ClockInPage() {
     setCurrentEntry(null)
     setError(null)
     setSuccess(null)
+    setClockOutSummary(null)
   }
 
   // Calculate time worked so far
@@ -244,6 +307,79 @@ export default function ClockInPage() {
                 disabled={pin.length < 4 || isLoading}
               >
                 {isLoading ? "Verifying..." : "Submit"}
+              </Button>
+            </div>
+          ) : clockOutSummary ? (
+            // Clock Out Summary Screen
+            <div className="bg-card border border-border rounded-xl p-6 shadow-lg">
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-3">
+                  <Check className="h-8 w-8 text-green-600" />
+                </div>
+                <h2 className="text-xl font-bold text-foreground">Clocked Out Successfully</h2>
+                <p className="text-sm text-muted-foreground">{staff.name}</p>
+              </div>
+
+              {/* Current Shift Summary */}
+              <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 mb-4">
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-primary" />
+                  This Shift
+                </h3>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground">Time</span>
+                  <span className="font-mono text-foreground">
+                    {clockOutSummary.shiftClockIn} - {clockOutSummary.shiftClockOut}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Hours Worked</span>
+                  <span className="font-mono font-bold text-primary text-lg">
+                    {clockOutSummary.shiftHours.toFixed(2)} hrs
+                  </span>
+                </div>
+              </div>
+
+              {/* Weekly Summary */}
+              <div className="bg-muted/30 border border-border rounded-lg p-4 mb-6">
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  This Week
+                </h3>
+                
+                {clockOutSummary.weeklyEntries.length > 0 ? (
+                  <div className="space-y-2 mb-3">
+                    {clockOutSummary.weeklyEntries.map((entry, index) => (
+                      <div key={index} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-foreground">{entry.dayName}</span>
+                          <span className="text-xs text-muted-foreground">{entry.date}</span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className="font-mono text-sm text-foreground">{entry.hoursWorked.toFixed(2)} hrs</span>
+                          <span className="text-xs text-muted-foreground">{entry.clockIn} - {entry.clockOut}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground mb-3">No completed shifts this week</p>
+                )}
+                
+                <div className="flex items-center justify-between pt-2 border-t border-border">
+                  <span className="text-sm font-semibold text-foreground">Total Week Hours</span>
+                  <span className="font-mono font-bold text-foreground text-lg">
+                    {clockOutSummary.totalWeekHours.toFixed(2)} hrs
+                  </span>
+                </div>
+              </div>
+
+              {/* Done Button */}
+              <Button
+                className="w-full h-12 text-lg font-bold"
+                onClick={handleReset}
+              >
+                Done
               </Button>
             </div>
           ) : (
