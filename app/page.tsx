@@ -5,7 +5,7 @@ import Link from "next/link"
 import { pizzas, sides, Order, PizzaBaseType } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send, Settings, BarChart3 } from "lucide-react"
+import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send, Settings, BarChart3, Clock, User } from "lucide-react"
 
 interface CartItem {
   cartItemId: string // Unique ID for each cart entry
@@ -45,6 +45,15 @@ export default function FrontPage() {
   const [pendingItems, setPendingItems] = useState<Set<string>>(new Set()) // Items with in-flight requests
   const [currentTime, setCurrentTime] = useState(Date.now())
   const [isCallingStaff, setIsCallingStaff] = useState(false)
+  
+  // Clock in/out state
+  const [showClockModal, setShowClockModal] = useState(false)
+  const [staffList, setStaffList] = useState<{ id: string; name: string; pin: string }[]>([])
+  const [activeClockins, setActiveClockins] = useState<{ id: string; staff_id: string; clock_in: string }[]>([])
+  const [selectedStaff, setSelectedStaff] = useState<string | null>(null)
+  const [clockPin, setClockPin] = useState("")
+  const [clockError, setClockError] = useState("")
+  const [clockLoading, setClockLoading] = useState(false)
   
   const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
   
@@ -227,6 +236,68 @@ export default function FrontPage() {
     const interval = setInterval(fetchOrders, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  // Fetch staff and clock-in data
+  const fetchClockData = async () => {
+    try {
+      const [staffRes, clockRes] = await Promise.all([
+        fetch("/api/staff"),
+        fetch("/api/time-clock")
+      ])
+      const staffData = await staffRes.json()
+      const clockData = await clockRes.json()
+      setStaffList(staffData)
+      setActiveClockins(clockData)
+    } catch (error) {
+      console.error("Error fetching clock data:", error)
+    }
+  }
+
+  // Fetch clock data when modal opens
+  useEffect(() => {
+    if (showClockModal) {
+      fetchClockData()
+    }
+  }, [showClockModal])
+
+  const handleClockAction = async (action: "clock_in" | "clock_out") => {
+    if (!selectedStaff || !clockPin) {
+      setClockError("Please select a staff member and enter PIN")
+      return
+    }
+    
+    setClockLoading(true)
+    setClockError("")
+    
+    try {
+      const res = await fetch("/api/time-clock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ staffId: selectedStaff, pin: clockPin, action })
+      })
+      
+      const data = await res.json()
+      
+      if (!res.ok) {
+        setClockError(data.error || "An error occurred")
+      } else {
+        // Success - reset and refresh
+        setClockPin("")
+        setSelectedStaff(null)
+        fetchClockData()
+        // Close modal after a brief delay to show success
+        setTimeout(() => setShowClockModal(false), 500)
+      }
+    } catch (error) {
+      setClockError("Network error. Please try again.")
+    } finally {
+      setClockLoading(false)
+    }
+  }
+
+  const isStaffClockedIn = (staffId: string) => {
+    return activeClockins.some(c => c.staff_id === staffId)
+  }
 
   const handleToggleSize = (pizzaId: string) => {
     setPizzaSizes((prev) => ({ ...prev, [pizzaId]: !prev[pizzaId] }))
@@ -539,6 +610,15 @@ export default function FrontPage() {
                 Statistics
               </Button>
             </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1 text-xs md:text-sm h-7 md:h-8"
+              onClick={() => setShowClockModal(true)}
+            >
+              <Clock className="h-3.5 w-3.5 md:h-4 md:w-4" />
+              Clock In/Out
+            </Button>
           </div>
         </header>
 
@@ -812,6 +892,142 @@ export default function FrontPage() {
           </Button>
         </div>
       </div>
+
+      {/* Clock In/Out Modal */}
+      {showClockModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card border border-border rounded-lg shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Staff Clock In/Out
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => {
+                  setShowClockModal(false)
+                  setSelectedStaff(null)
+                  setClockPin("")
+                  setClockError("")
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* Staff Selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Select Staff Member</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {staffList.map((staff) => {
+                    const isClockedIn = isStaffClockedIn(staff.id)
+                    return (
+                      <Button
+                        key={staff.id}
+                        variant={selectedStaff === staff.id ? "default" : "outline"}
+                        className={`h-12 flex flex-col items-center justify-center gap-0.5 ${
+                          isClockedIn ? "border-green-500 bg-green-500/10" : ""
+                        }`}
+                        onClick={() => {
+                          setSelectedStaff(staff.id)
+                          setClockError("")
+                        }}
+                      >
+                        <div className="flex items-center gap-1">
+                          <User className="h-4 w-4" />
+                          <span className="font-semibold">{staff.name}</span>
+                        </div>
+                        {isClockedIn && (
+                          <span className="text-[10px] text-green-600">Clocked In</span>
+                        )}
+                      </Button>
+                    )
+                  })}
+                </div>
+                {staffList.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No staff members found. Add staff in Admin settings.
+                  </p>
+                )}
+              </div>
+
+              {/* PIN Entry */}
+              {selectedStaff && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Enter PIN</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={4}
+                      value={clockPin}
+                      onChange={(e) => setClockPin(e.target.value.replace(/\D/g, ""))}
+                      placeholder="****"
+                      className="flex-1 h-12 text-center text-2xl tracking-widest font-mono border border-input rounded-md bg-background px-3"
+                    />
+                  </div>
+                  
+                  {/* Numpad */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "C"].map((num, idx) => (
+                      num ? (
+                        <Button
+                          key={idx}
+                          variant="outline"
+                          className="h-12 text-xl font-bold"
+                          onClick={() => {
+                            if (num === "C") {
+                              setClockPin("")
+                            } else if (clockPin.length < 4) {
+                              setClockPin(prev => prev + num)
+                            }
+                          }}
+                        >
+                          {num}
+                        </Button>
+                      ) : <div key={idx} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Error Message */}
+              {clockError && (
+                <div className="text-sm text-red-500 text-center font-medium">
+                  {clockError}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              {selectedStaff && (
+                <div className="flex gap-2">
+                  {!isStaffClockedIn(selectedStaff) ? (
+                    <Button
+                      className="flex-1 h-12 text-lg font-bold bg-green-600 hover:bg-green-700"
+                      onClick={() => handleClockAction("clock_in")}
+                      disabled={clockLoading || clockPin.length === 0}
+                    >
+                      {clockLoading ? "..." : "Clock In"}
+                    </Button>
+                  ) : (
+                    <Button
+                      className="flex-1 h-12 text-lg font-bold bg-red-600 hover:bg-red-700"
+                      onClick={() => handleClockAction("clock_out")}
+                      disabled={clockLoading || clockPin.length === 0}
+                    >
+                      {clockLoading ? "..." : "Clock Out"}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
