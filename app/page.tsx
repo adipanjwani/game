@@ -5,7 +5,7 @@ import Link from "next/link"
 import { pizzas, sides, Order, PizzaBaseType } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send, Settings, BarChart3, Clock, User } from "lucide-react"
+import { ChefHat, Check, X, Plus, Minus, ShoppingBag, Delete, Send, Settings, BarChart3, Clock } from "lucide-react"
 
 interface CartItem {
   cartItemId: string // Unique ID for each cart entry
@@ -48,12 +48,20 @@ export default function FrontPage() {
   
   // Clock in/out state
   const [showClockModal, setShowClockModal] = useState(false)
-  const [staffList, setStaffList] = useState<{ id: string; name: string; pin: string }[]>([])
-  const [activeClockins, setActiveClockins] = useState<{ id: string; staff_id: string; clock_in: string }[]>([])
-  const [selectedStaff, setSelectedStaff] = useState<string | null>(null)
   const [clockPin, setClockPin] = useState("")
   const [clockError, setClockError] = useState("")
   const [clockLoading, setClockLoading] = useState(false)
+  const [clockStatus, setClockStatus] = useState<{
+    staffName: string
+    isClockedIn: boolean
+    clockInTime: string | null
+  } | null>(null)
+  const [clockOutSummary, setClockOutSummary] = useState<{
+    staffName: string
+    shiftDate: string
+    shiftHours: number
+    weeklyHours: number
+  } | null>(null)
   
   const DELIVERY_TIME_LIMIT = 7.5 * 60 * 1000 // 7.5 minutes in milliseconds
   
@@ -237,32 +245,49 @@ export default function FrontPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Fetch staff and clock-in data
-  const fetchClockData = async () => {
+  // Check PIN status
+  const checkPinStatus = async (pin: string) => {
+    if (pin.length !== 4) return
+    
+    setClockLoading(true)
+    setClockError("")
+    
     try {
-      const [staffRes, clockRes] = await Promise.all([
-        fetch("/api/staff"),
-        fetch("/api/time-clock")
-      ])
-      const staffData = await staffRes.json()
-      const clockData = await clockRes.json()
-      setStaffList(staffData)
-      setActiveClockins(clockData)
+      const res = await fetch(`/api/time-clock?pin=${pin}`)
+      const data = await res.json()
+      
+      if (!res.ok) {
+        setClockError(data.error || "Invalid PIN")
+        setClockStatus(null)
+      } else {
+        setClockStatus({
+          staffName: data.staffName,
+          isClockedIn: data.isClockedIn,
+          clockInTime: data.clockInTime
+        })
+      }
     } catch (error) {
-      console.error("Error fetching clock data:", error)
+      setClockError("Network error")
+    } finally {
+      setClockLoading(false)
     }
   }
 
-  // Fetch clock data when modal opens
-  useEffect(() => {
-    if (showClockModal) {
-      fetchClockData()
+  // Handle PIN input change
+  const handlePinChange = (newPin: string) => {
+    setClockPin(newPin)
+    setClockError("")
+    setClockStatus(null)
+    setClockOutSummary(null)
+    
+    if (newPin.length === 4) {
+      checkPinStatus(newPin)
     }
-  }, [showClockModal])
+  }
 
   const handleClockAction = async (action: "clock_in" | "clock_out") => {
-    if (!selectedStaff || !clockPin) {
-      setClockError("Please select a staff member and enter PIN")
+    if (clockPin.length !== 4) {
+      setClockError("Please enter your 4-digit PIN")
       return
     }
     
@@ -273,7 +298,7 @@ export default function FrontPage() {
       const res = await fetch("/api/time-clock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staffId: selectedStaff, pin: clockPin, action })
+        body: JSON.stringify({ pin: clockPin, action })
       })
       
       const data = await res.json()
@@ -281,12 +306,21 @@ export default function FrontPage() {
       if (!res.ok) {
         setClockError(data.error || "An error occurred")
       } else {
-        // Success - reset and refresh
-        setClockPin("")
-        setSelectedStaff(null)
-        fetchClockData()
-        // Close modal after a brief delay to show success
-        setTimeout(() => setShowClockModal(false), 500)
+        if (action === "clock_out") {
+          // Show summary for clock out
+          setClockOutSummary({
+            staffName: data.staffName,
+            shiftDate: data.shiftDate,
+            shiftHours: data.shiftHours,
+            weeklyHours: data.weeklyHours
+          })
+          setClockStatus(null)
+        } else {
+          // Clock in success - close modal after brief delay
+          setClockPin("")
+          setClockStatus(null)
+          setTimeout(() => setShowClockModal(false), 1000)
+        }
       }
     } catch (error) {
       setClockError("Network error. Please try again.")
@@ -295,8 +329,18 @@ export default function FrontPage() {
     }
   }
 
-  const isStaffClockedIn = (staffId: string) => {
-    return activeClockins.some(c => c.staff_id === staffId)
+  const resetClockModal = () => {
+    setShowClockModal(false)
+    setClockPin("")
+    setClockError("")
+    setClockStatus(null)
+    setClockOutSummary(null)
+  }
+
+  const formatHours = (hours: number) => {
+    const h = Math.floor(hours)
+    const m = Math.round((hours - h) * 60)
+    return `${h}h ${m}m`
   }
 
   const handleToggleSize = (pizzaId: string) => {
@@ -896,7 +940,7 @@ export default function FrontPage() {
       {/* Clock In/Out Modal */}
       {showClockModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card border border-border rounded-lg shadow-xl w-full max-w-md">
+          <div className="bg-card border border-border rounded-lg shadow-xl w-full max-w-sm">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h2 className="text-lg font-bold flex items-center gap-2">
                 <Clock className="h-5 w-5" />
@@ -906,69 +950,76 @@ export default function FrontPage() {
                 variant="ghost"
                 size="sm"
                 className="h-8 w-8 p-0"
-                onClick={() => {
-                  setShowClockModal(false)
-                  setSelectedStaff(null)
-                  setClockPin("")
-                  setClockError("")
-                }}
+                onClick={resetClockModal}
               >
                 <X className="h-4 w-4" />
               </Button>
             </div>
 
             <div className="p-4 space-y-4">
-              {/* Staff Selection */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Select Staff Member</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {staffList.map((staff) => {
-                    const isClockedIn = isStaffClockedIn(staff.id)
-                    return (
-                      <Button
-                        key={staff.id}
-                        variant={selectedStaff === staff.id ? "default" : "outline"}
-                        className={`h-12 flex flex-col items-center justify-center gap-0.5 ${
-                          isClockedIn ? "border-green-500 bg-green-500/10" : ""
-                        }`}
-                        onClick={() => {
-                          setSelectedStaff(staff.id)
-                          setClockError("")
-                        }}
-                      >
-                        <div className="flex items-center gap-1">
-                          <User className="h-4 w-4" />
-                          <span className="font-semibold">{staff.name}</span>
-                        </div>
-                        {isClockedIn && (
-                          <span className="text-[10px] text-green-600">Clocked In</span>
-                        )}
-                      </Button>
-                    )
-                  })}
+              {/* Clock Out Summary */}
+              {clockOutSummary ? (
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600 mb-2">
+                      Goodbye, {clockOutSummary.staffName}!
+                    </div>
+                  </div>
+                  
+                  <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Shift Date</span>
+                      <span className="font-semibold">
+                        {new Date(clockOutSummary.shiftDate).toLocaleDateString("en-GB", {
+                          weekday: "short",
+                          day: "numeric",
+                          month: "short"
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Shift Hours</span>
+                      <span className="font-semibold text-lg">
+                        {formatHours(clockOutSummary.shiftHours)}
+                      </span>
+                    </div>
+                    <div className="border-t border-border pt-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Week Total</span>
+                        <span className="font-bold text-xl text-primary">
+                          {formatHours(clockOutSummary.weeklyHours)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground text-right mt-1">
+                        Mon - Sun
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <Button
+                    className="w-full h-12"
+                    onClick={resetClockModal}
+                  >
+                    Done
+                  </Button>
                 </div>
-                {staffList.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No staff members found. Add staff in Admin settings.
-                  </p>
-                )}
-              </div>
-
-              {/* PIN Entry */}
-              {selectedStaff && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Enter PIN</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={4}
-                      value={clockPin}
-                      onChange={(e) => setClockPin(e.target.value.replace(/\D/g, ""))}
-                      placeholder="****"
-                      className="flex-1 h-12 text-center text-2xl tracking-widest font-mono border border-input rounded-md bg-background px-3"
-                    />
+              ) : (
+                <>
+                  {/* PIN Entry */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-center block">Enter Your PIN</label>
+                    <div className="flex justify-center gap-2">
+                      {[0, 1, 2, 3].map((i) => (
+                        <div
+                          key={i}
+                          className={`w-12 h-14 border-2 rounded-lg flex items-center justify-center text-2xl font-bold ${
+                            clockPin.length > i ? "border-primary bg-primary/10" : "border-input"
+                          }`}
+                        >
+                          {clockPin.length > i ? "*" : ""}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   
                   {/* Numpad */}
@@ -978,12 +1029,12 @@ export default function FrontPage() {
                         <Button
                           key={idx}
                           variant="outline"
-                          className="h-12 text-xl font-bold"
+                          className="h-14 text-xl font-bold"
                           onClick={() => {
                             if (num === "C") {
-                              setClockPin("")
+                              handlePinChange("")
                             } else if (clockPin.length < 4) {
-                              setClockPin(prev => prev + num)
+                              handlePinChange(clockPin + num)
                             }
                           }}
                         >
@@ -992,37 +1043,58 @@ export default function FrontPage() {
                       ) : <div key={idx} />
                     ))}
                   </div>
-                </div>
-              )}
 
-              {/* Error Message */}
-              {clockError && (
-                <div className="text-sm text-red-500 text-center font-medium">
-                  {clockError}
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              {selectedStaff && (
-                <div className="flex gap-2">
-                  {!isStaffClockedIn(selectedStaff) ? (
-                    <Button
-                      className="flex-1 h-12 text-lg font-bold bg-green-600 hover:bg-green-700"
-                      onClick={() => handleClockAction("clock_in")}
-                      disabled={clockLoading || clockPin.length === 0}
-                    >
-                      {clockLoading ? "..." : "Clock In"}
-                    </Button>
-                  ) : (
-                    <Button
-                      className="flex-1 h-12 text-lg font-bold bg-red-600 hover:bg-red-700"
-                      onClick={() => handleClockAction("clock_out")}
-                      disabled={clockLoading || clockPin.length === 0}
-                    >
-                      {clockLoading ? "..." : "Clock Out"}
-                    </Button>
+                  {/* Loading */}
+                  {clockLoading && (
+                    <div className="text-center text-muted-foreground">
+                      Checking...
+                    </div>
                   )}
-                </div>
+
+                  {/* Error Message */}
+                  {clockError && (
+                    <div className="text-sm text-red-500 text-center font-medium">
+                      {clockError}
+                    </div>
+                  )}
+
+                  {/* Status and Action Buttons */}
+                  {clockStatus && (
+                    <div className="space-y-3">
+                      <div className="text-center">
+                        <span className="text-lg font-semibold">
+                          Hello, {clockStatus.staffName}!
+                        </span>
+                        {clockStatus.isClockedIn && clockStatus.clockInTime && (
+                          <div className="text-sm text-muted-foreground mt-1">
+                            Clocked in at {new Date(clockStatus.clockInTime).toLocaleTimeString("en-GB", {
+                              hour: "2-digit",
+                              minute: "2-digit"
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {!clockStatus.isClockedIn ? (
+                        <Button
+                          className="w-full h-14 text-lg font-bold bg-green-600 hover:bg-green-700"
+                          onClick={() => handleClockAction("clock_in")}
+                          disabled={clockLoading}
+                        >
+                          Clock In
+                        </Button>
+                      ) : (
+                        <Button
+                          className="w-full h-14 text-lg font-bold bg-red-600 hover:bg-red-700"
+                          onClick={() => handleClockAction("clock_out")}
+                          disabled={clockLoading}
+                        >
+                          Clock Out
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
