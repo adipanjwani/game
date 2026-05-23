@@ -242,12 +242,6 @@ export default function StaffManagementPage() {
                 Timesheet
               </Button>
             </Link>
-            <Link href="/admin/hours">
-              <Button variant="outline" size="sm" className="gap-1">
-                <Users className="h-4 w-4" />
-                Hours
-              </Button>
-            </Link>
             <Link href="/">
               <Button variant="outline" size="sm" className="gap-1">
                 <Home className="h-4 w-4" />

@@ -131,12 +131,6 @@ export default function AdminPage() {
                 Timesheet
               </Button>
             </Link>
-            <Link href="/admin/hours">
-              <Button variant="outline" size="sm" className="gap-1">
-                <Clock className="h-4 w-4" />
-                Hours
-              </Button>
-            </Link>
             <Link href="/admin/statistics">
               <Button variant="outline" size="sm" className="gap-1">
                 <BarChart3 className="h-4 w-4" />
