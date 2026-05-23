@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
-import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, Clock, BarChart3 } from "lucide-react"
+import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, Clock, BarChart3, Users, CalendarDays } from "lucide-react"
 
 export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([])
@@ -12,6 +12,12 @@ export default function AdminPage() {
   const [isClearing, setIsClearing] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
   const [currentTime, setCurrentTime] = useState<Date>(new Date())
+  const [isMounted, setIsMounted] = useState(false)
+
+  // Set mounted state
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   // Clock update
   useEffect(() => {
@@ -109,10 +115,28 @@ export default function AdminPage() {
             <h1 className="text-2xl md:text-3xl font-bold text-foreground">Admin Panel</h1>
             <div className="flex items-center gap-1.5 text-lg font-mono font-bold text-muted-foreground">
               <Clock className="h-5 w-5" />
-              {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {isMounted ? currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : "--:--:--"}
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/admin/staff">
+              <Button variant="outline" size="sm" className="gap-1">
+                <Users className="h-4 w-4" />
+                Staff
+              </Button>
+            </Link>
+            <Link href="/admin/staff/timesheet">
+              <Button variant="outline" size="sm" className="gap-1">
+                <CalendarDays className="h-4 w-4" />
+                Timesheet
+              </Button>
+            </Link>
+            <Link href="/admin/hours">
+              <Button variant="outline" size="sm" className="gap-1">
+                <Clock className="h-4 w-4" />
+                Hours
+              </Button>
+            </Link>
             <Link href="/admin/statistics">
               <Button variant="outline" size="sm" className="gap-1">
                 <BarChart3 className="h-4 w-4" />
@@ -189,7 +213,7 @@ export default function AdminPage() {
 
         {/* Last Refresh */}
         <div className="text-sm text-muted-foreground mb-4">
-          Last refreshed: {lastRefresh.toLocaleTimeString()}
+          Last refreshed: {isMounted ? lastRefresh.toLocaleTimeString() : "--:--:--"}
         </div>
 
         {/* Orders List */}
