@@ -117,10 +117,12 @@ export default function StatisticsPage() {
     orderList.forEach(order => {
       order.items.forEach(item => {
         const name = item.pizza?.name || item.side?.name || "Unknown"
+        // Count half pizzas as 0.5, full pizzas and sides as 1
+        const countValue = item.pizza && !item.isFullPizza ? 0.5 : 1
         if (breakdown[name]) {
-          breakdown[name].count++
+          breakdown[name].count += countValue
         } else {
-          breakdown[name] = { count: 1, name }
+          breakdown[name] = { count: countValue, name }
         }
       })
     })
