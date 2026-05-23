@@ -46,7 +46,7 @@ export default function ClockInPage() {
       setPin((prev) => prev.slice(0, -1))
     } else if (value === "clear") {
       setPin("")
-    } else if (pin.length < 6) {
+    } else if (pin.length < 4) {
       setPin((prev) => prev + value)
     }
     setError(null)
@@ -55,7 +55,7 @@ export default function ClockInPage() {
   // Verify PIN and get staff info
   const handleVerifyPin = async () => {
     if (pin.length < 4) {
-      setError("PIN must be at least 4 digits")
+      setError("PIN must be 4 digits")
       return
     }
 
@@ -206,10 +206,10 @@ export default function ClockInPage() {
 
               {/* PIN Display */}
               <div className="flex justify-center gap-2 mb-6">
-                {[0, 1, 2, 3, 4, 5].map((i) => (
+                {[0, 1, 2, 3].map((i) => (
                   <div
                     key={i}
-                    className={`w-10 h-12 rounded-lg border-2 flex items-center justify-center text-xl font-bold ${
+                    className={`w-12 h-14 rounded-lg border-2 flex items-center justify-center text-2xl font-bold ${
                       pin[i] ? "border-primary bg-primary/10 text-foreground" : "border-border bg-muted/30"
                     }`}
                   >
