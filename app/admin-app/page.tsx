@@ -14,8 +14,10 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  Calendar
+  Calendar,
+  ExternalLink
 } from "lucide-react"
+import Link from "next/link"
 import { Order, Pizza as PizzaType, Side, pizzas as defaultPizzas, sides as defaultSides } from "@/lib/pizza-data"
 
 type Tab = "staff" | "statistics" | "menu"
@@ -295,11 +297,19 @@ export default function AdminApp() {
 
   return (
     <div className="min-h-dvh bg-background flex flex-col">
-      {/* Header */}
-      <header className="bg-card border-b border-border p-4 sticky top-0 z-10">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-foreground">Admin Panel</h1>
-          <Button 
+  {/* Header */}
+  <header className="bg-card border-b border-border p-4 sticky top-0 z-10">
+  <div className="flex items-center justify-between">
+  <div className="flex items-center gap-3">
+    <h1 className="text-xl font-bold text-foreground">Admin Panel</h1>
+    <Link href="/">
+      <Button variant="outline" size="sm" className="gap-1 h-7">
+        <ExternalLink className="h-3.5 w-3.5" />
+        <span className="text-xs">App</span>
+      </Button>
+    </Link>
+  </div>
+  <Button
             variant="outline" 
             size="sm" 
             onClick={() => {
