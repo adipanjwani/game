@@ -654,6 +654,12 @@ export default function FrontPage() {
                 Statistics
               </Button>
             </Link>
+            <Link href="/admin-app">
+              <Button variant="outline" size="sm" className="gap-1 text-xs md:text-sm h-7 md:h-8">
+                <Settings className="h-3.5 w-3.5 md:h-4 md:w-4" />
+                Admin App
+              </Button>
+            </Link>
             <Button
               variant="outline"
               size="sm"
