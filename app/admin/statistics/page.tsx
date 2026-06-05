@@ -117,10 +117,23 @@ export default function StatisticsPage() {
     orderList.forEach(order => {
       order.items.forEach(item => {
         const name = item.pizza?.name || item.side?.name || "Unknown"
+        
+        let countToAdd = 1
+        
+        // For pizzas: count half pizza as 0.5, full pizza as 1
+        if (item.pizza) {
+          countToAdd = item.isFullPizza ? 1 : 0.5
+        }
+        
+        // For Kransky Dogs and Garlic Bread: count by quantity
+        if (item.side && (item.side.id === "kransky-dog" || item.side.id === "garlic-bread")) {
+          countToAdd = item.quantity || 1
+        }
+        
         if (breakdown[name]) {
-          breakdown[name].count++
+          breakdown[name].count += countToAdd
         } else {
-          breakdown[name] = { count: 1, name }
+          breakdown[name] = { count: countToAdd, name }
         }
       })
     })
