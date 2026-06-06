@@ -255,12 +255,19 @@ export default function TimesheetPage() {
           const adjustedDayB = dayB === 0 ? 6 : dayB - 1
           comparison = adjustedDayA - adjustedDayB
         } else if (sortField === "clockIn") {
-          // Sort by time of day (ignoring the date)
+          // Group by calendar day first, then by clock-in time within that day,
+          // so you can see who clocked in first day by day.
           const dateA = new Date(a.clock_in)
           const dateB = new Date(b.clock_in)
-          const minutesA = dateA.getHours() * 60 + dateA.getMinutes()
-          const minutesB = dateB.getHours() * 60 + dateB.getMinutes()
-          comparison = minutesA - minutesB
+          const dayKeyA = dateA.getFullYear() * 10000 + (dateA.getMonth() + 1) * 100 + dateA.getDate()
+          const dayKeyB = dateB.getFullYear() * 10000 + (dateB.getMonth() + 1) * 100 + dateB.getDate()
+          if (dayKeyA !== dayKeyB) {
+            comparison = dayKeyA - dayKeyB
+          } else {
+            const minutesA = dateA.getHours() * 60 + dateA.getMinutes()
+            const minutesB = dateB.getHours() * 60 + dateB.getMinutes()
+            comparison = minutesA - minutesB
+          }
         }
 
         return sortDirection === "asc" ? comparison : -comparison
