@@ -144,6 +144,21 @@ export default function StatisticsPage() {
   const frontBreakdown = getItemBreakdown(frontOrders)
   const takeawayBreakdown = getItemBreakdown(takeawayOrders)
 
+  // Calculate total pizzas sold (full = 1, half = 0.5, so two halves = one full)
+  const getPizzasSold = (orderList: Order[]) => {
+    let total = 0
+    orderList.forEach(order => {
+      order.items.forEach(item => {
+        if (item.pizza) {
+          total += item.isFullPizza ? 1 : 0.5
+        }
+      })
+    })
+    return total
+  }
+
+  const totalPizzasSold = getPizzasSold(filteredOrders)
+
   const navigateDate = (direction: number) => {
     const newDate = new Date(selectedDate)
     if (viewMode === "weekly") {
@@ -235,10 +250,14 @@ export default function StatisticsPage() {
         </div>
 
         {/* Stats Summary */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-card border border-border rounded-lg p-4">
             <div className="text-3xl font-bold text-foreground">{filteredOrders.length}</div>
             <div className="text-sm text-muted-foreground">Total Orders</div>
+          </div>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <div className="text-3xl font-bold text-primary">{totalPizzasSold}</div>
+            <div className="text-sm text-muted-foreground">Pizzas Sold</div>
           </div>
           <div className="bg-card border border-border rounded-lg p-4">
             <div className="text-3xl font-bold text-blue-500">{frontOrders.length}</div>
