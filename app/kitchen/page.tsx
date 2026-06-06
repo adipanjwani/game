@@ -92,12 +92,46 @@ export default function KitchenPage() {
     
     initAudio()
   }, [])
+
+  // iOS/Chrome suspends AudioContext when tab is backgrounded or screen locks.
+  // Resume it whenever the page becomes visible or regains focus again.
+  useEffect(() => {
+    const resumeAudio = async () => {
+      const ctx = audioContextRef.current
+      if (ctx && ctx.state === "suspended") {
+        try {
+          await ctx.resume()
+        } catch {}
+      }
+    }
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        resumeAudio()
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibility)
+    window.addEventListener("focus", resumeAudio)
+    window.addEventListener("pageshow", resumeAudio)
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility)
+      window.removeEventListener("focus", resumeAudio)
+      window.removeEventListener("pageshow", resumeAudio)
+    }
+  }, [])
   
   // Play notification sound for new orders
-  const playNotificationSound = useCallback(() => {
-    if (!audioContextRef.current || audioContextRef.current.state !== "running") return
+  const playNotificationSound = useCallback(async () => {
+    if (!audioContextRef.current) return
     try {
       const ctx = audioContextRef.current
+      // iOS suspends the context when backgrounded/locked - resume before playing
+      if (ctx.state === "suspended") {
+        await ctx.resume()
+      }
+      if (ctx.state !== "running") return
       const oscillator = ctx.createOscillator()
       const gainNode = ctx.createGain()
       
@@ -238,8 +272,12 @@ export default function KitchenPage() {
   // Play siren sound when active
   useEffect(() => {
     if (sirenActive) {
-      if (!audioContextRef.current || audioContextRef.current.state !== "running") return
+      if (!audioContextRef.current) return
       const ctx = audioContextRef.current
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {})
+      }
+      if (ctx.state !== "running") return
       
       if (!oscillatorRef.current) {
         const oscillator = ctx.createOscillator()
