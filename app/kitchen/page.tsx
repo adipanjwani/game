@@ -20,6 +20,8 @@ export default function KitchenPage() {
   const sirenIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const [audioEnabled, setAudioEnabled] = useState(false) // Start false, enable after user interaction
   const [audioUnlocked, setAudioUnlocked] = useState(false) // Track if audio is unlocked (for iOS)
+  const customSoundUrlRef = useRef<string | null>(null)
+  const customAudioRef = useRef<HTMLAudioElement | null>(null)
   
   // Function to unlock and enable audio (requires user interaction on iOS)
   const unlockAudio = useCallback(async () => {
@@ -122,8 +124,53 @@ export default function KitchenPage() {
     }
   }, [])
   
+  // Fetch the configured custom notification sound URL (and keep it fresh)
+  useEffect(() => {
+    const fetchSound = async () => {
+      try {
+        const res = await fetch("/api/notification-sound")
+        const data = await res.json()
+        const url: string | null = data.url ?? null
+        customSoundUrlRef.current = url
+        if (url) {
+          // Preload so playback is instant when an order arrives
+          if (!customAudioRef.current) {
+            customAudioRef.current = new Audio(url)
+          } else if (customAudioRef.current.src !== url) {
+            customAudioRef.current.src = url
+          }
+          customAudioRef.current.load()
+        } else {
+          customAudioRef.current = null
+        }
+      } catch (error) {
+        console.error("[v0] Error fetching notification sound:", error)
+      }
+    }
+    fetchSound()
+    const interval = setInterval(fetchSound, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
   // Play notification sound for new orders
   const playNotificationSound = useCallback(async () => {
+    // If a custom uploaded sound is configured, play it via an <audio> element
+    if (customSoundUrlRef.current) {
+      try {
+        if (!customAudioRef.current) {
+          customAudioRef.current = new Audio(customSoundUrlRef.current)
+        } else if (customAudioRef.current.src !== customSoundUrlRef.current) {
+          customAudioRef.current.src = customSoundUrlRef.current
+        }
+        customAudioRef.current.currentTime = 0
+        await customAudioRef.current.play()
+        return
+      } catch (error) {
+        console.error("[v0] Error playing custom notification sound, falling back:", error)
+        // fall through to synthesized tone
+      }
+    }
+
     if (!audioContextRef.current) return
     try {
       const ctx = audioContextRef.current
