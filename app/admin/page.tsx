@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
-import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, Clock, BarChart3, Users, CalendarDays } from "lucide-react"
+import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, Clock, BarChart3, Users, CalendarDays, Volume2, Upload, Play } from "lucide-react"
 
 export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([])
@@ -13,6 +13,13 @@ export default function AdminPage() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
   const [currentTime, setCurrentTime] = useState<Date>(new Date())
   const [isMounted, setIsMounted] = useState(false)
+
+  // Notification sound settings
+  const [soundUrl, setSoundUrl] = useState<string | null>(null)
+  const [isUploadingSound, setIsUploadingSound] = useState(false)
+  const [soundError, setSoundError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
 
   // Set mounted state
   useEffect(() => {
@@ -46,6 +53,81 @@ export default function AdminPage() {
   useEffect(() => {
     fetchOrders()
   }, [])
+
+  // Fetch the current notification sound setting
+  useEffect(() => {
+    const fetchSound = async () => {
+      try {
+        const res = await fetch("/api/notification-sound")
+        const data = await res.json()
+        setSoundUrl(data.url ?? null)
+      } catch (error) {
+        console.error("Failed to fetch notification sound:", error)
+      }
+    }
+    fetchSound()
+  }, [])
+
+  const handleSoundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setSoundError(null)
+
+    if (!file.type.startsWith("audio/")) {
+      setSoundError("Please select an audio file (MP3, WAV, etc.)")
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setSoundError("File must be smaller than 5MB")
+      return
+    }
+
+    setIsUploadingSound(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch("/api/notification-sound", {
+        method: "POST",
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setSoundError(data.error || "Upload failed")
+      } else {
+        setSoundUrl(data.url)
+      }
+    } catch (error) {
+      console.error("Failed to upload sound:", error)
+      setSoundError("Upload failed. Please try again.")
+    }
+    setIsUploadingSound(false)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  const handleTestSound = () => {
+    if (!soundUrl) return
+    if (!previewAudioRef.current) {
+      previewAudioRef.current = new Audio(soundUrl)
+    } else {
+      previewAudioRef.current.src = soundUrl
+    }
+    previewAudioRef.current.currentTime = 0
+    previewAudioRef.current.play().catch((err) => {
+      console.error("Failed to play sound:", err)
+    })
+  }
+
+  const handleResetSound = async () => {
+    if (!confirm("Reset to the default notification sound?")) return
+    try {
+      await fetch("/api/notification-sound", { method: "DELETE" })
+      setSoundUrl(null)
+      setSoundError(null)
+    } catch (error) {
+      console.error("Failed to reset sound:", error)
+    }
+  }
 
   // SSE for real-time refresh notifications
   useEffect(() => {
@@ -208,6 +290,59 @@ export default function AdminPage() {
               <AlertTriangle className="h-4 w-4" />
               {isClearing ? "Clearing..." : `Clear All Orders (${orders.length})`}
             </Button>
+          </div>
+        </div>
+
+        {/* Notification Sound */}
+        <div className="bg-card border border-border rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-2 mb-1">
+            <Volume2 className="h-5 w-5 text-foreground" />
+            <h2 className="text-lg font-semibold text-foreground">Notification Sound</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Upload a custom sound that plays in the Kitchen when a new order arrives. Leave empty to use the default alarm tone.
+          </p>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/*"
+              onChange={handleSoundUpload}
+              className="hidden"
+            />
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploadingSound}
+              className="gap-2"
+            >
+              <Upload className="h-4 w-4" />
+              {isUploadingSound ? "Uploading..." : soundUrl ? "Replace Sound" : "Upload Sound"}
+            </Button>
+
+            {soundUrl && (
+              <>
+                <Button variant="secondary" onClick={handleTestSound} className="gap-2">
+                  <Play className="h-4 w-4" />
+                  Test
+                </Button>
+                <Button variant="ghost" onClick={handleResetSound} className="gap-2 text-destructive">
+                  <Trash2 className="h-4 w-4" />
+                  Reset to Default
+                </Button>
+              </>
+            )}
+          </div>
+
+          <div className="mt-3 text-sm">
+            {soundError ? (
+              <span className="text-destructive">{soundError}</span>
+            ) : soundUrl ? (
+              <span className="text-green-600">Custom notification sound is active.</span>
+            ) : (
+              <span className="text-muted-foreground">Using the default alarm tone. MP3 or WAV, up to 5MB.</span>
+            )}
           </div>
         </div>
 

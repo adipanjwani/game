@@ -101,8 +101,9 @@ export default function StatisticsPage() {
 
   const { start: rangeStart, end: rangeEnd } = getDateRange()
 
-  // Filter orders by date range
+  // Filter orders by date range, excluding cancelled orders
   const filteredOrders = orders.filter(order => {
+    if (order.status === "cancelled") return false
     const orderDate = new Date(order.createdAt)
     return orderDate >= rangeStart && orderDate < rangeEnd
   })

@@ -351,7 +351,7 @@ export default function FrontPage() {
     await fetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status: "completed" }),
+      body: JSON.stringify({ orderId, status: "cancelled" }),
     })
     // SSE will confirm the update
   }

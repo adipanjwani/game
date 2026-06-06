@@ -99,7 +99,7 @@ export interface OrderItem {
 export interface Order {
   id: string
   items: OrderItem[]
-  status: "pending" | "preparing" | "ready" | "completed"
+  status: "pending" | "preparing" | "ready" | "completed" | "cancelled"
   createdAt: Date
   tableNumber?: number
   orderType: "front" | "takeaway"
