@@ -49,7 +49,7 @@ export default function KitchenPage() {
           const gain = audioContextRef.current.createGain()
           osc.type = "sine"
           osc.frequency.value = 880
-          gain.gain.setValueAtTime(0.9, audioContextRef.current.currentTime)
+          gain.gain.setValueAtTime(1.17, audioContextRef.current.currentTime)
           gain.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 0.2)
           osc.connect(gain)
           gain.connect(audioContextRef.current.destination)
@@ -132,22 +132,36 @@ export default function KitchenPage() {
         await ctx.resume()
       }
       if (ctx.state !== "running") return
-      const oscillator = ctx.createOscillator()
-      const gainNode = ctx.createGain()
-      
-      oscillator.type = "sine"
-      oscillator.frequency.setValueAtTime(880, ctx.currentTime)
-      oscillator.frequency.setValueAtTime(1100, ctx.currentTime + 0.1)
-      oscillator.frequency.setValueAtTime(880, ctx.currentTime + 0.2)
-      
-      gainNode.gain.setValueAtTime(1.0, ctx.currentTime)
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4)
-      
-      oscillator.connect(gainNode)
-      gainNode.connect(ctx.destination)
-      
-      oscillator.start(ctx.currentTime)
-      oscillator.stop(ctx.currentTime + 0.4)
+
+      // Repeating two-tone "ding-dong" alarm that rings for at least 3 seconds
+      const startTime = ctx.currentTime
+      const beepDuration = 0.25
+      const gap = 0.15
+      const cycle = (beepDuration + gap) * 2 // one ding-dong pair
+      const totalDuration = 3.2 // ring for at least 3 seconds
+      const repeats = Math.ceil(totalDuration / cycle)
+
+      for (let i = 0; i < repeats; i++) {
+        const base = startTime + i * cycle
+        // Two alternating tones for an alarm-like pattern
+        const tones = [
+          { freq: 1320, at: base },
+          { freq: 990, at: base + beepDuration + gap },
+        ]
+        tones.forEach(({ freq, at }) => {
+          const oscillator = ctx.createOscillator()
+          const gainNode = ctx.createGain()
+          oscillator.type = "square"
+          oscillator.frequency.setValueAtTime(freq, at)
+          gainNode.gain.setValueAtTime(0.0001, at)
+          gainNode.gain.exponentialRampToValueAtTime(1.3, at + 0.02)
+          gainNode.gain.exponentialRampToValueAtTime(0.001, at + beepDuration)
+          oscillator.connect(gainNode)
+          gainNode.connect(ctx.destination)
+          oscillator.start(at)
+          oscillator.stop(at + beepDuration)
+        })
+      }
     } catch (error) {
       console.error("[v0] Error playing notification:", error)
     }
@@ -285,7 +299,7 @@ export default function KitchenPage() {
         
         oscillator.type = "sawtooth"
         oscillator.frequency.value = 800
-        gainNode.gain.value = 0.9
+        gainNode.gain.value = 1.17
         
         oscillator.connect(gainNode)
         gainNode.connect(ctx.destination)
