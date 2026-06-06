@@ -108,7 +108,6 @@ export default function StatisticsPage() {
   })
 
   const frontOrders = filteredOrders.filter(o => o.orderType === "front" || !o.orderType)
-  const takeawayOrders = filteredOrders.filter(o => o.orderType === "takeaway")
 
   // Calculate item breakdown
   const getItemBreakdown = (orderList: Order[]) => {
@@ -142,7 +141,6 @@ export default function StatisticsPage() {
   }
 
   const frontBreakdown = getItemBreakdown(frontOrders)
-  const takeawayBreakdown = getItemBreakdown(takeawayOrders)
 
   // Calculate total pizzas sold (full = 1, half = 0.5, so two halves = one full)
   const getPizzasSold = (orderList: Order[]) => {
@@ -157,7 +155,7 @@ export default function StatisticsPage() {
     return total
   }
 
-  const totalPizzasSold = getPizzasSold(filteredOrders)
+  const totalPizzasSold = getPizzasSold(frontOrders)
 
   const navigateDate = (direction: number) => {
     const newDate = new Date(selectedDate)
@@ -250,27 +248,19 @@ export default function StatisticsPage() {
         </div>
 
         {/* Stats Summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-card border border-border rounded-lg p-4">
-            <div className="text-3xl font-bold text-foreground">{filteredOrders.length}</div>
+            <div className="text-3xl font-bold text-foreground">{frontOrders.length}</div>
             <div className="text-sm text-muted-foreground">Total Orders</div>
           </div>
           <div className="bg-card border border-border rounded-lg p-4">
             <div className="text-3xl font-bold text-primary">{totalPizzasSold}</div>
             <div className="text-sm text-muted-foreground">Pizzas Sold</div>
           </div>
-          <div className="bg-card border border-border rounded-lg p-4">
-            <div className="text-3xl font-bold text-blue-500">{frontOrders.length}</div>
-            <div className="text-sm text-muted-foreground">Front Orders</div>
-          </div>
-          <div className="bg-card border border-border rounded-lg p-4">
-            <div className="text-3xl font-bold text-amber-500">{takeawayOrders.length}</div>
-            <div className="text-sm text-muted-foreground">Takeaway Orders</div>
-          </div>
         </div>
 
         {/* Order Breakdowns */}
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid gap-4">
           {/* Front Orders Breakdown */}
           <div className="bg-card border border-border rounded-lg p-4">
             <h2 className="text-lg font-semibold mb-4 text-foreground flex items-center gap-2">
@@ -284,28 +274,6 @@ export default function StatisticsPage() {
             ) : (
               <div className="space-y-2">
                 {frontBreakdown.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between py-1 border-b border-border last:border-0">
-                    <span className="text-foreground">{item.name}</span>
-                    <span className="font-bold text-foreground">{item.count}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Takeaway Orders Breakdown */}
-          <div className="bg-card border border-border rounded-lg p-4">
-            <h2 className="text-lg font-semibold mb-4 text-foreground flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-amber-500"></span>
-              Takeaway Orders Breakdown
-            </h2>
-            {isLoading ? (
-              <div className="text-center py-4 text-muted-foreground">Loading...</div>
-            ) : takeawayBreakdown.length === 0 ? (
-              <div className="text-center py-4 text-muted-foreground">No takeaway orders in this period</div>
-            ) : (
-              <div className="space-y-2">
-                {takeawayBreakdown.map((item, idx) => (
                   <div key={idx} className="flex items-center justify-between py-1 border-b border-border last:border-0">
                     <span className="text-foreground">{item.name}</span>
                     <span className="font-bold text-foreground">{item.count}</span>
