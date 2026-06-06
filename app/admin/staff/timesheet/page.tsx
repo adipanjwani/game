@@ -44,7 +44,7 @@ interface WeekDay {
   dateFormatted: string
 }
 
-type SortField = "staff" | "date" | "day" | null
+type SortField = "staff" | "date" | "day" | "clockIn" | null
 type SortDirection = "asc" | "desc"
 
 export default function TimesheetPage() {
@@ -254,6 +254,13 @@ export default function TimesheetPage() {
           const adjustedDayA = dayA === 0 ? 6 : dayA - 1
           const adjustedDayB = dayB === 0 ? 6 : dayB - 1
           comparison = adjustedDayA - adjustedDayB
+        } else if (sortField === "clockIn") {
+          // Sort by time of day (ignoring the date)
+          const dateA = new Date(a.clock_in)
+          const dateB = new Date(b.clock_in)
+          const minutesA = dateA.getHours() * 60 + dateA.getMinutes()
+          const minutesB = dateB.getHours() * 60 + dateB.getMinutes()
+          comparison = minutesA - minutesB
         }
 
         return sortDirection === "asc" ? comparison : -comparison
@@ -407,7 +414,15 @@ export default function TimesheetPage() {
                         {getSortIcon("day")}
                       </div>
                     </TableHead>
-                    <TableHead className="min-w-[90px]">Clock In</TableHead>
+                    <TableHead 
+                      className="min-w-[90px] cursor-pointer hover:bg-muted/50 select-none"
+                      onClick={() => handleSort("clockIn")}
+                    >
+                      <div className="flex items-center">
+                        Clock In
+                        {getSortIcon("clockIn")}
+                      </div>
+                    </TableHead>
                     <TableHead className="min-w-[90px]">Clock Out</TableHead>
                     <TableHead className="min-w-[80px] text-right">Hours</TableHead>
                   </TableRow>
