@@ -49,7 +49,7 @@ export default function KitchenPage() {
           const gain = audioContextRef.current.createGain()
           osc.type = "sine"
           osc.frequency.value = 880
-          gain.gain.setValueAtTime(0.2, audioContextRef.current.currentTime)
+          gain.gain.setValueAtTime(0.9, audioContextRef.current.currentTime)
           gain.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 0.2)
           osc.connect(gain)
           gain.connect(audioContextRef.current.destination)
@@ -140,7 +140,7 @@ export default function KitchenPage() {
       oscillator.frequency.setValueAtTime(1100, ctx.currentTime + 0.1)
       oscillator.frequency.setValueAtTime(880, ctx.currentTime + 0.2)
       
-      gainNode.gain.setValueAtTime(0.3, ctx.currentTime)
+      gainNode.gain.setValueAtTime(1.0, ctx.currentTime)
       gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4)
       
       oscillator.connect(gainNode)
@@ -285,7 +285,7 @@ export default function KitchenPage() {
         
         oscillator.type = "sawtooth"
         oscillator.frequency.value = 800
-        gainNode.gain.value = 0.4
+        gainNode.gain.value = 0.9
         
         oscillator.connect(gainNode)
         gainNode.connect(ctx.destination)
