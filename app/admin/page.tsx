@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { Order } from "@/lib/pizza-data"
 import { Button } from "@/components/ui/button"
-import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, Clock, BarChart3, Users, CalendarDays, Volume2, Upload, Play, Wine, Beer } from "lucide-react"
+import { Trash2, RefreshCw, Home, ChefHat, AlertTriangle, Clock, BarChart3, Users, CalendarDays, Volume2, Upload, Play, Beer } from "lucide-react"
 
 export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([])
@@ -223,12 +223,6 @@ export default function AdminPage() {
               <Button variant="outline" size="sm" className="gap-1">
                 <BarChart3 className="h-4 w-4" />
                 Statistics
-              </Button>
-            </Link>
-            <Link href="/admin/bar-menu">
-              <Button variant="outline" size="sm" className="gap-1">
-                <Wine className="h-4 w-4" />
-                Bar Menu
               </Button>
             </Link>
             <Link href="/admin/bar">
