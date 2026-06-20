@@ -1,209 +1,308 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Home, Beer, Wine, Settings, RefreshCw } from "lucide-react"
+import { Home, Beer, Plus, Minus, Trash2, RefreshCw, ShoppingCart, Banknote, CreditCard, Check } from "lucide-react"
 
 interface BarMenuItem {
   id: string
   name: string
-  category: string | null
+  description: string | null
   price: number | null
+  category: string | null
 }
 
-interface BarTap {
+interface CartLine {
   id: string
   name: string
-  menu_item_id: string | null
-  created_at: string
-  menu_item?: BarMenuItem | null
+  price: number
+  quantity: number
 }
 
-const NONE_VALUE = "__none__"
+type PaymentMethod = "cash" | "card"
 
-export default function FrontBarPage() {
-  const [taps, setTaps] = useState<BarTap[]>([])
+export default function BarPosPage() {
   const [menuItems, setMenuItems] = useState<BarMenuItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [savingTapId, setSavingTapId] = useState<string | null>(null)
+  const [cart, setCart] = useState<CartLine[]>([])
+  const [isPaying, setIsPaying] = useState(false)
+  const [lastPaid, setLastPaid] = useState<PaymentMethod | null>(null)
 
   const supabase = createClient()
 
-  const fetchData = async () => {
+  const fetchMenu = async () => {
     setIsLoading(true)
-    const [tapsRes, menuRes] = await Promise.all([
-      supabase
-        .from("bar_taps")
-        .select("*, menu_item:bar_menu_items(id, name, category, price)")
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("bar_menu_items")
-        .select("id, name, category, price")
-        .order("name", { ascending: true }),
-    ])
+    const { data, error } = await supabase
+      .from("bar_menu_items")
+      .select("id, name, description, price, category")
+      .order("category", { ascending: true })
+      .order("name", { ascending: true })
 
-    if (tapsRes.error) {
-      console.error("Failed to fetch taps:", tapsRes.error)
+    if (error) {
+      console.error("Failed to fetch bar menu:", error)
     } else {
-      setTaps((tapsRes.data as BarTap[]) || [])
-    }
-
-    if (menuRes.error) {
-      console.error("Failed to fetch menu items:", menuRes.error)
-    } else {
-      setMenuItems((menuRes.data as BarMenuItem[]) || [])
+      setMenuItems((data as BarMenuItem[]) || [])
     }
     setIsLoading(false)
   }
 
   useEffect(() => {
-    fetchData()
+    fetchMenu()
   }, [])
 
-  const handleAssign = async (tap: BarTap, value: string) => {
-    const menu_item_id = value === NONE_VALUE ? null : value
-    setSavingTapId(tap.id)
+  const groupedMenu = useMemo(() => {
+    const groups = new Map<string, BarMenuItem[]>()
+    menuItems.forEach((item) => {
+      const key = item.category?.trim() || "Other"
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(item)
+    })
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+  }, [menuItems])
 
-    // Optimistic update
-    setTaps((prev) =>
-      prev.map((t) =>
-        t.id === tap.id
-          ? {
-              ...t,
-              menu_item_id,
-              menu_item: menu_item_id ? menuItems.find((m) => m.id === menu_item_id) || null : null,
-            }
-          : t,
-      ),
+  const addToCart = (item: BarMenuItem) => {
+    setLastPaid(null)
+    setCart((prev) => {
+      const existing = prev.find((line) => line.id === item.id)
+      if (existing) {
+        return prev.map((line) =>
+          line.id === item.id ? { ...line, quantity: line.quantity + 1 } : line,
+        )
+      }
+      return [...prev, { id: item.id, name: item.name, price: item.price ?? 0, quantity: 1 }]
+    })
+  }
+
+  const changeQuantity = (id: string, delta: number) => {
+    setCart((prev) =>
+      prev
+        .map((line) => (line.id === id ? { ...line, quantity: line.quantity + delta } : line))
+        .filter((line) => line.quantity > 0),
     )
+  }
 
-    const { error: updateError } = await supabase
-      .from("bar_taps")
-      .update({ menu_item_id })
-      .eq("id", tap.id)
+  const removeLine = (id: string) => {
+    setCart((prev) => prev.filter((line) => line.id !== id))
+  }
 
-    if (updateError) {
-      console.error("Failed to assign menu item:", updateError)
-      alert("Failed to assign menu item.")
-      fetchData()
+  const clearCart = () => setCart([])
+
+  const total = useMemo(
+    () => cart.reduce((sum, line) => sum + line.price * line.quantity, 0),
+    [cart],
+  )
+  const itemCount = useMemo(
+    () => cart.reduce((sum, line) => sum + line.quantity, 0),
+    [cart],
+  )
+
+  const handlePay = async (method: PaymentMethod) => {
+    if (cart.length === 0 || isPaying) return
+    setIsPaying(true)
+
+    const { error } = await supabase.from("bar_sales").insert({
+      total,
+      payment_method: method,
+      items: cart.map((line) => ({
+        id: line.id,
+        name: line.name,
+        price: line.price,
+        quantity: line.quantity,
+      })),
+    })
+
+    if (error) {
+      console.error("Failed to record sale:", error)
+      alert("Failed to process payment. Please try again.")
+      setIsPaying(false)
+      return
     }
-    setSavingTapId(null)
+
+    setCart([])
+    setLastPaid(method)
+    setIsPaying(false)
   }
 
   return (
-    <div className="min-h-dvh bg-background p-4 md:p-6">
-      <div className="max-w-5xl mx-auto">
-        {/* Header */}
-        <header className="flex items-center justify-between mb-6 gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Beer className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Bar Taps</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1" onClick={fetchData}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh
+    <div className="h-dvh bg-background flex flex-col overflow-hidden">
+      {/* Header */}
+      <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border shrink-0">
+        <div className="flex items-center gap-2">
+          <Beer className="h-6 w-6 text-primary" />
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">Bar</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-1" onClick={fetchMenu}>
+            <RefreshCw className="h-4 w-4" />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          <Link href="/">
+            <Button variant="outline" size="sm" className="gap-1">
+              <Home className="h-4 w-4" />
+              <span className="hidden sm:inline">Front</span>
             </Button>
-            <Link href="/admin/bar">
-              <Button variant="outline" size="sm" className="gap-1">
-                <Settings className="h-4 w-4" />
-                Manage Taps
+          </Link>
+        </div>
+      </header>
+
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
+        {/* Menu */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {isLoading ? (
+            <div className="text-center py-12 text-muted-foreground">Loading menu...</div>
+          ) : menuItems.length === 0 ? (
+            <div className="bg-card border border-border rounded-lg text-center py-12 text-muted-foreground">
+              No bar menu items yet.{" "}
+              <Link href="/admin/bar" className="text-primary underline">
+                Add some
+              </Link>{" "}
+              to start selling.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-6">
+              {groupedMenu.map(([category, items]) => (
+                <section key={category}>
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                    {category}
+                  </h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {items.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => addToCart(item)}
+                        className="bg-card border border-border rounded-lg p-3 text-left flex flex-col gap-1 hover:border-primary hover:bg-accent transition-colors touch-manipulation active:scale-95"
+                      >
+                        <span className="font-medium text-foreground leading-tight">{item.name}</span>
+                        <span className="text-sm font-semibold text-primary mt-auto">
+                          {item.price != null ? `A$${item.price.toFixed(2)}` : "—"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Cart */}
+        <aside className="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-border bg-card flex flex-col min-h-0 shrink-0">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5 text-primary" />
+              <h2 className="font-semibold text-foreground">Cart</h2>
+              {itemCount > 0 && (
+                <span className="text-xs bg-primary text-primary-foreground rounded-full px-2 py-0.5 font-medium">
+                  {itemCount}
+                </span>
+              )}
+            </div>
+            {cart.length > 0 && (
+              <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground" onClick={clearCart}>
+                <Trash2 className="h-4 w-4" />
+                Clear
               </Button>
-            </Link>
-            <Link href="/">
-              <Button variant="outline" size="sm" className="gap-1">
-                <Home className="h-4 w-4" />
-                Front
-              </Button>
-            </Link>
+            )}
           </div>
-        </header>
 
-        <p className="text-sm text-muted-foreground mb-6">
-          Assign a bar menu item to each tap. Changes save automatically.
-        </p>
-
-        {/* Taps Grid */}
-        {isLoading ? (
-          <div className="text-center py-12 text-muted-foreground">Loading taps...</div>
-        ) : taps.length === 0 ? (
-          <div className="bg-card border border-border rounded-lg text-center py-12 text-muted-foreground">
-            No taps yet.{" "}
-            <Link href="/admin/bar" className="text-primary underline">
-              Create taps
-            </Link>{" "}
-            to get started.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {taps.map((tap) => (
-              <div key={tap.id} className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3">
-                <div className="flex items-center gap-2">
-                  <Beer className="h-5 w-5 text-primary" />
-                  <h3 className="font-semibold text-foreground">{tap.name}</h3>
-                  {savingTapId === tap.id && (
-                    <RefreshCw className="h-3.5 w-3.5 text-muted-foreground animate-spin ml-auto" />
-                  )}
-                </div>
-
-                <div className="rounded-md bg-muted/50 px-3 py-2 min-h-14 flex items-center">
-                  {tap.menu_item ? (
-                    <div>
-                      <div className="font-medium text-foreground">{tap.menu_item.name}</div>
+          <div className="flex-1 overflow-y-auto p-3">
+            {cart.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground gap-2 py-12">
+                {lastPaid ? (
+                  <>
+                    <div className="h-12 w-12 rounded-full bg-primary/15 flex items-center justify-center">
+                      <Check className="h-6 w-6 text-primary" />
+                    </div>
+                    <p className="font-medium text-foreground">Payment complete</p>
+                    <p className="text-sm">Paid by {lastPaid === "cash" ? "cash" : "card"}.</p>
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="h-8 w-8 opacity-50" />
+                    <p className="text-sm">Tap a drink to add it to the cart.</p>
+                  </>
+                )}
+              </div>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {cart.map((line) => (
+                  <li key={line.id} className="flex items-center gap-2 bg-muted/40 rounded-lg p-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-foreground truncate">{line.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {tap.menu_item.category || "Uncategorised"}
-                        {tap.menu_item.price != null && ` · A$${tap.menu_item.price.toFixed(2)}`}
+                        A${line.price.toFixed(2)} each
                       </div>
                     </div>
-                  ) : (
-                    <span className="text-sm text-muted-foreground italic">Empty tap</span>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Assign item</Label>
-                  <Select
-                    value={tap.menu_item_id || NONE_VALUE}
-                    onValueChange={(value) => handleAssign(tap, value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select item" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE_VALUE}>Empty tap</SelectItem>
-                      {menuItems.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {item.name}
-                          {item.category ? ` (${item.category})` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            ))}
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => changeQuantity(line.id, -1)}
+                        aria-label={`Decrease ${line.name}`}
+                      >
+                        <Minus className="h-3.5 w-3.5" />
+                      </Button>
+                      <span className="w-6 text-center font-medium text-foreground">{line.quantity}</span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => changeQuantity(line.id, 1)}
+                        aria-label={`Increase ${line.name}`}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div className="w-16 text-right font-semibold text-foreground">
+                      A${(line.price * line.quantity).toFixed(2)}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground"
+                      onClick={() => removeLine(line.id)}
+                      aria-label={`Remove ${line.name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-        )}
 
-        {menuItems.length === 0 && !isLoading && (
-          <p className="text-sm text-muted-foreground mt-6">
-            No bar menu items yet.{" "}
-            <Link href="/admin/bar-menu" className="text-primary underline">
-              Add some
-            </Link>{" "}
-            to assign them to taps.
-          </p>
-        )}
+          {/* Totals & Payment */}
+          <div className="border-t border-border p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between text-lg">
+              <span className="font-medium text-foreground">Total</span>
+              <span className="font-bold text-foreground">A${total.toFixed(2)}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                size="lg"
+                className="gap-2"
+                disabled={cart.length === 0 || isPaying}
+                onClick={() => handlePay("cash")}
+              >
+                <Banknote className="h-5 w-5" />
+                Cash
+              </Button>
+              <Button
+                size="lg"
+                variant="secondary"
+                className="gap-2"
+                disabled={cart.length === 0 || isPaying}
+                onClick={() => handlePay("card")}
+              >
+                <CreditCard className="h-5 w-5" />
+                Card
+              </Button>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   )
