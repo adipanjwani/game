@@ -17,6 +17,8 @@ interface BarMenuItem {
 interface BarTap {
   id: string
   name: string
+  tap_limit: number | null
+  consumed: number
 }
 
 interface CartLine {
@@ -63,16 +65,35 @@ export default function BarPosPage() {
   }
 
   const fetchTaps = async () => {
-    const { data, error } = await supabase
-      .from("bar_taps")
-      .select("id, name")
-      .order("name", { ascending: true })
+    const [tapsRes, salesRes] = await Promise.all([
+      supabase.from("bar_taps").select("id, name, tap_limit").order("name", { ascending: true }),
+      supabase.from("bar_sales").select("bar_tap_id, total").eq("payment_method", "bar_tap"),
+    ])
 
-    if (error) {
-      console.error("Failed to fetch bar taps:", error)
-    } else {
-      setTaps((data as BarTap[]) || [])
+    if (tapsRes.error) {
+      console.error("Failed to fetch bar taps:", tapsRes.error)
+      return
     }
+    if (salesRes.error) {
+      console.error("Failed to fetch tap sales:", salesRes.error)
+    }
+
+    const consumedByTap = new Map<string, number>()
+    ;(salesRes.data || []).forEach((sale: { bar_tap_id: string | null; total: number | null }) => {
+      if (!sale.bar_tap_id) return
+      consumedByTap.set(sale.bar_tap_id, (consumedByTap.get(sale.bar_tap_id) || 0) + (sale.total || 0))
+    })
+
+    const tapsWithBalance: BarTap[] = (tapsRes.data || []).map(
+      (tap: { id: string; name: string; tap_limit: number | null }) => ({
+        id: tap.id,
+        name: tap.name,
+        tap_limit: tap.tap_limit,
+        consumed: consumedByTap.get(tap.id) || 0,
+      }),
+    )
+
+    setTaps(tapsWithBalance)
   }
 
   useEffect(() => {
@@ -168,6 +189,11 @@ export default function BarPosPage() {
     setLastPaid(method)
     setShowTapPicker(false)
     setIsPaying(false)
+
+    // Refresh tap balances so consumed/remaining reflect this sale
+    if (method === "bar_tap") {
+      fetchTaps()
+    }
   }
 
   return (
@@ -414,18 +440,46 @@ export default function BarPosPage() {
                 </div>
               ) : (
                 <ul className="flex flex-col gap-2">
-                  {taps.map((tap) => (
-                    <li key={tap.id}>
-                      <button
-                        onClick={() => handlePay("bar_tap", tap)}
-                        disabled={isPaying}
-                        className="w-full flex items-center justify-between gap-2 bg-muted/40 hover:bg-accent rounded-lg p-3 text-left transition-colors touch-manipulation disabled:opacity-50"
-                      >
-                        <span className="font-medium text-foreground">{tap.name}</span>
-                        <span className="font-semibold text-primary">A${total.toFixed(2)}</span>
-                      </button>
-                    </li>
-                  ))}
+                  {taps.map((tap) => {
+                    const hasLimit = tap.tap_limit != null
+                    const remaining = hasLimit ? (tap.tap_limit as number) - tap.consumed : null
+                    const wouldExceed = remaining != null && total > remaining
+                    return (
+                      <li key={tap.id}>
+                        <button
+                          onClick={() => handlePay("bar_tap", tap)}
+                          disabled={isPaying || wouldExceed}
+                          className="w-full flex flex-col gap-1.5 bg-muted/40 hover:bg-accent rounded-lg p-3 text-left transition-colors touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-muted/40"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium text-foreground">{tap.name}</span>
+                            <span className="font-semibold text-primary">+A${total.toFixed(2)}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="text-muted-foreground">
+                              Consumed: A${tap.consumed.toFixed(2)}
+                              {hasLimit && ` / A$${(tap.tap_limit as number).toFixed(2)}`}
+                            </span>
+                            {hasLimit && (
+                              <span className={wouldExceed ? "font-medium text-destructive" : "text-muted-foreground"}>
+                                {wouldExceed ? "Over limit" : `A$${(remaining as number).toFixed(2)} left`}
+                              </span>
+                            )}
+                          </div>
+                          {hasLimit && (
+                            <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${wouldExceed ? "bg-destructive" : "bg-primary"}`}
+                                style={{
+                                  width: `${Math.min(100, ((tap.consumed + total) / (tap.tap_limit as number)) * 100)}%`,
+                                }}
+                              />
+                            </div>
+                          )}
+                        </button>
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </div>
