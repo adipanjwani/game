@@ -21,7 +21,13 @@ interface CartLine {
   quantity: number
 }
 
-type PaymentMethod = "cash" | "card"
+type PaymentMethod = "cash" | "card" | "bar_tap"
+
+const PAYMENT_LABELS: Record<PaymentMethod, string> = {
+  cash: "cash",
+  card: "card",
+  bar_tap: "bar tap",
+}
 
 export default function BarPosPage() {
   const [menuItems, setMenuItems] = useState<BarMenuItem[]>([])
@@ -216,7 +222,7 @@ export default function BarPosPage() {
                       <Check className="h-6 w-6 text-primary" />
                     </div>
                     <p className="font-medium text-foreground">Payment complete</p>
-                    <p className="text-sm">Paid by {lastPaid === "cash" ? "cash" : "card"}.</p>
+                    <p className="text-sm">Paid by {PAYMENT_LABELS[lastPaid]}.</p>
                   </>
                 ) : (
                   <>
@@ -280,10 +286,10 @@ export default function BarPosPage() {
               <span className="font-medium text-foreground">Total</span>
               <span className="font-bold text-foreground">A${total.toFixed(2)}</span>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <Button
                 size="lg"
-                className="gap-2"
+                className="flex-col h-auto py-3 gap-1"
                 disabled={cart.length === 0 || isPaying}
                 onClick={() => handlePay("cash")}
               >
@@ -293,12 +299,22 @@ export default function BarPosPage() {
               <Button
                 size="lg"
                 variant="secondary"
-                className="gap-2"
+                className="flex-col h-auto py-3 gap-1"
                 disabled={cart.length === 0 || isPaying}
                 onClick={() => handlePay("card")}
               >
                 <CreditCard className="h-5 w-5" />
                 Card
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                className="flex-col h-auto py-3 gap-1"
+                disabled={cart.length === 0 || isPaying}
+                onClick={() => handlePay("bar_tap")}
+              >
+                <Beer className="h-5 w-5" />
+                Bar Tap
               </Button>
             </div>
           </div>
