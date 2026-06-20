@@ -271,6 +271,20 @@ export default function TimesheetPage() {
     }, 0)
   }
 
+  const getStaffTotals = (): { name: string; hours: number }[] => {
+    const totals = new Map<string, number>()
+    displayedEntries.forEach((entry) => {
+      const name = entry.staff?.name || "Unknown"
+      const hours = calculateHours(entry.clock_in, entry.clock_out)
+      totals.set(name, (totals.get(name) || 0) + hours)
+    })
+    return Array.from(totals.entries())
+      .map(([name, hours]) => ({ name, hours }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  const staffTotals = getStaffTotals()
+
   const weekRangeDisplay = `${weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
 
   return (
@@ -459,6 +473,29 @@ export default function TimesheetPage() {
             </div>
           )}
         </div>
+
+        {/* Per-Staff Total Hours Summary */}
+        {!isLoading && staffTotals.length > 0 && (
+          <div className="mt-6 bg-card border border-border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              <h2 className="font-semibold text-foreground">Total Hours per Staff</h2>
+              {searchQuery && <span className="text-sm text-muted-foreground font-normal">(filtered)</span>}
+            </div>
+            <div className="divide-y divide-border">
+              {staffTotals.map((member) => (
+                <div key={member.name} className="flex items-center justify-between px-4 py-3">
+                  <span className="font-medium text-foreground">{member.name}</span>
+                  <span className="font-mono font-medium text-foreground">{member.hours.toFixed(2)} hrs</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between px-4 py-3 bg-muted/50">
+                <span className="font-semibold text-foreground">Grand Total</span>
+                <span className="font-mono font-semibold text-foreground">{getFilteredTotalHours().toFixed(2)} hrs</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
