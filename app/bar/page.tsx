@@ -35,6 +35,7 @@ export default function BarPosPage() {
   const [cart, setCart] = useState<CartLine[]>([])
   const [isPaying, setIsPaying] = useState(false)
   const [lastPaid, setLastPaid] = useState<PaymentMethod | null>(null)
+  const [activeCategory, setActiveCategory] = useState<string>("All")
 
   const supabase = createClient()
 
@@ -67,6 +68,13 @@ export default function BarPosPage() {
     })
     return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]))
   }, [menuItems])
+
+  const categories = useMemo(() => ["All", ...groupedMenu.map(([category]) => category)], [groupedMenu])
+
+  const visibleMenu = useMemo(
+    () => (activeCategory === "All" ? groupedMenu : groupedMenu.filter(([category]) => category === activeCategory)),
+    [groupedMenu, activeCategory],
+  )
 
   const addToCart = (item: BarMenuItem) => {
     setLastPaid(null)
@@ -167,8 +175,25 @@ export default function BarPosPage() {
               to start selling.
             </div>
           ) : (
-            <div className="flex flex-col gap-6">
-              {groupedMenu.map(([category, items]) => (
+            <div className="flex flex-col gap-4">
+              {categories.length > 1 && (
+                <div className="flex flex-wrap gap-2 sticky top-0 bg-background pb-1 z-10">
+                  {categories.map((category) => (
+                    <button
+                      key={category}
+                      onClick={() => setActiveCategory(category)}
+                      className={`rounded-full px-4 py-1.5 text-sm font-medium border transition-colors touch-manipulation ${
+                        activeCategory === category
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-card text-foreground border-border hover:border-primary"
+                      }`}
+                    >
+                      {category}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {visibleMenu.map(([category, items]) => (
                 <section key={category}>
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-2">
                     {category}
