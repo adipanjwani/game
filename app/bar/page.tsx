@@ -33,7 +33,7 @@ interface SaleItem {
   name?: string
   price?: number
   quantity?: number
-  addons?: { name?: string }[]
+  addons?: { name?: string; quantity?: number }[]
 }
 
 interface BarAddon {
@@ -42,12 +42,19 @@ interface BarAddon {
   price: number
 }
 
+interface CartAddon {
+  id: string
+  name: string
+  price: number
+  quantity: number
+}
+
 interface CartLine {
   lineKey: string
   itemId: string
   name: string
   basePrice: number
-  addons: BarAddon[]
+  addons: CartAddon[]
   unitPrice: number
   quantity: number
 }
@@ -72,7 +79,7 @@ export default function BarPosPage() {
   const [showTapPicker, setShowTapPicker] = useState(false)
   const [showBalances, setShowBalances] = useState(false)
   const [expandedTapId, setExpandedTapId] = useState<string | null>(null)
-  const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([])
+  const [selectedAddons, setSelectedAddons] = useState<Record<string, number>>({})
 
   const supabase = createClient()
 
@@ -127,7 +134,14 @@ export default function BarPosPage() {
         if (!billByTap.has(sale.bar_tap_id)) billByTap.set(sale.bar_tap_id, new Map())
         const lines = billByTap.get(sale.bar_tap_id)!
         ;(sale.items || []).forEach((item) => {
-          const addonNames = (item.addons || []).map((a) => a?.name || "").filter(Boolean)
+          const addonNames = (item.addons || [])
+            .map((a) => {
+              const n = a?.name || ""
+              if (!n) return ""
+              const q = a?.quantity ?? 1
+              return q > 1 ? `${n} ×${q}` : n
+            })
+            .filter(Boolean)
           const unitPrice = item.price ?? 0
           const qty = item.quantity ?? 1
           const key = `${item.name || "Item"}|${addonNames.join(",")}|${unitPrice}`
@@ -181,13 +195,15 @@ export default function BarPosPage() {
     [groupedMenu, activeCategory],
   )
 
-  const addLineToCart = (item: BarMenuItem, lineAddons: BarAddon[]) => {
+  const addLineToCart = (item: BarMenuItem, lineAddons: CartAddon[]) => {
     setLastPaid(null)
     const basePrice = item.price ?? 0
-    const addonsTotal = lineAddons.reduce((sum, a) => sum + a.price, 0)
+    const addonsTotal = lineAddons.reduce((sum, a) => sum + a.price * a.quantity, 0)
     const unitPrice = basePrice + addonsTotal
-    const sortedIds = lineAddons.map((a) => a.id).sort()
-    const lineKey = [item.id, ...sortedIds].join("|")
+    const sortedKeys = lineAddons
+      .map((a) => `${a.id}x${a.quantity}`)
+      .sort()
+    const lineKey = [item.id, ...sortedKeys].join("|")
 
     setCart((prev) => {
       const existing = prev.find((line) => line.lineKey === lineKey)
@@ -212,14 +228,26 @@ export default function BarPosPage() {
   }
 
   const onItemClick = (item: BarMenuItem) => {
-    const chosen = addons.filter((a) => selectedAddonIds.includes(a.id))
+    const chosen: CartAddon[] = addons
+      .filter((a) => (selectedAddons[a.id] ?? 0) > 0)
+      .map((a) => ({ id: a.id, name: a.name, price: a.price, quantity: selectedAddons[a.id] }))
     addLineToCart(item, chosen)
     // Clear the add-on selection after each item so it doesn't carry over to the next drink
-    setSelectedAddonIds([])
+    setSelectedAddons({})
   }
 
-  const toggleAddon = (id: string) => {
-    setSelectedAddonIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  const changeAddonQty = (id: string, delta: number) => {
+    setSelectedAddons((prev) => {
+      const next = { ...prev }
+      const current = next[id] ?? 0
+      const updated = current + delta
+      if (updated <= 0) {
+        delete next[id]
+      } else {
+        next[id] = updated
+      }
+      return next
+    })
   }
 
   const changeQuantity = (lineKey: string, delta: number) => {
@@ -267,7 +295,7 @@ export default function BarPosPage() {
         base_price: line.basePrice,
         price: line.unitPrice,
         quantity: line.quantity,
-        addons: line.addons.map((a) => ({ id: a.id, name: a.name, price: a.price })),
+        addons: line.addons.map((a) => ({ id: a.id, name: a.name, price: a.price, quantity: a.quantity })),
       })),
     })
 
@@ -381,16 +409,16 @@ export default function BarPosPage() {
           )}
         </div>
 
-        {/* Add-on selector — choose extras, then tap a drink to apply them */}
+        {/* Add-on selector — choose extras (with quantities), then tap a drink to apply them */}
         {addons.length > 0 && (
           <div className="border-t border-border bg-card px-4 py-3 shrink-0">
             <div className="flex items-center justify-between gap-2 mb-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Add-ons {selectedAddonIds.length > 0 && `· applied to next drink`}
+                Add-ons {Object.keys(selectedAddons).length > 0 && `· applied to next drink`}
               </span>
-              {selectedAddonIds.length > 0 && (
+              {Object.keys(selectedAddons).length > 0 && (
                 <button
-                  onClick={() => setSelectedAddonIds([])}
+                  onClick={() => setSelectedAddons({})}
                   className="text-xs font-medium text-muted-foreground hover:text-foreground touch-manipulation"
                 >
                   Clear
@@ -399,21 +427,50 @@ export default function BarPosPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               {addons.map((addon) => {
-                const checked = selectedAddonIds.includes(addon.id)
+                const qty = selectedAddons[addon.id] ?? 0
+                const active = qty > 0
                 return (
-                  <button
+                  <div
                     key={addon.id}
-                    onClick={() => toggleAddon(addon.id)}
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border transition-colors touch-manipulation ${
-                      checked
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-muted/40 text-foreground hover:border-primary"
+                    className={`flex items-center gap-1 rounded-full border pl-3 pr-1 py-1 text-sm font-medium transition-colors ${
+                      active
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border bg-muted/40 text-foreground"
                     }`}
                   >
-                    {checked && <Check className="h-3.5 w-3.5" />}
-                    {addon.name}
-                    <span className={checked ? "opacity-90" : "text-primary"}>+A${addon.price.toFixed(2)}</span>
-                  </button>
+                    {!active ? (
+                      <button
+                        onClick={() => changeAddonQty(addon.id, 1)}
+                        className="flex items-center gap-1.5 touch-manipulation py-0.5 pr-1"
+                      >
+                        <Plus className="h-3.5 w-3.5 text-primary" />
+                        {addon.name}
+                        <span className="text-primary">+A${addon.price.toFixed(2)}</span>
+                      </button>
+                    ) : (
+                      <>
+                        <span className="mr-1">
+                          {addon.name}
+                          <span className="text-primary"> +A${addon.price.toFixed(2)}</span>
+                        </span>
+                        <button
+                          onClick={() => changeAddonQty(addon.id, -1)}
+                          className="h-6 w-6 rounded-full flex items-center justify-center bg-card border border-border touch-manipulation"
+                          aria-label={`Decrease ${addon.name}`}
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <span className="w-5 text-center font-semibold">{qty}</span>
+                        <button
+                          onClick={() => changeAddonQty(addon.id, 1)}
+                          className="h-6 w-6 rounded-full flex items-center justify-center bg-primary text-primary-foreground touch-manipulation"
+                          aria-label={`Increase ${addon.name}`}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 )
               })}
             </div>
@@ -467,7 +524,7 @@ export default function BarPosPage() {
                       <div className="font-medium text-foreground truncate">{line.name}</div>
                       {line.addons.length > 0 && (
                         <div className="text-xs text-muted-foreground truncate">
-                          {line.addons.map((a) => `+ ${a.name}`).join(", ")}
+                          {line.addons.map((a) => `+ ${a.name}${a.quantity > 1 ? ` ×${a.quantity}` : ""}`).join(", ")}
                         </div>
                       )}
                       <div className="text-xs text-muted-foreground">
