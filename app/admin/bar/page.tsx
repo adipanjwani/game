@@ -51,12 +51,20 @@ interface BarTap {
   created_at: string
 }
 
-type Section = "taps" | "menu"
+interface BarAddon {
+  id: string
+  name: string
+  price: number
+  created_at: string
+}
+
+type Section = "taps" | "menu" | "addons"
 
 export default function BarPage() {
   const [section, setSection] = useState<Section>("taps")
   const [taps, setTaps] = useState<BarTap[]>([])
   const [menuItems, setMenuItems] = useState<BarMenuItem[]>([])
+  const [addons, setAddons] = useState<BarAddon[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   // Tap dialogs
@@ -77,16 +85,26 @@ export default function BarPage() {
   const [itemError, setItemError] = useState("")
   const [isSavingItem, setIsSavingItem] = useState(false)
 
+  // Add-on dialogs
+  const [isAddAddonOpen, setIsAddAddonOpen] = useState(false)
+  const [isEditAddonOpen, setIsEditAddonOpen] = useState(false)
+  const [isDeleteAddonOpen, setIsDeleteAddonOpen] = useState(false)
+  const [selectedAddon, setSelectedAddon] = useState<BarAddon | null>(null)
+  const [addonForm, setAddonForm] = useState({ name: "", price: "" })
+  const [addonError, setAddonError] = useState("")
+  const [isSavingAddon, setIsSavingAddon] = useState(false)
+
   const supabase = createClient()
 
   const fetchData = async () => {
     setIsLoading(true)
-    const [tapsRes, menuRes] = await Promise.all([
+    const [tapsRes, menuRes, addonsRes] = await Promise.all([
       supabase
         .from("bar_taps")
         .select("*")
         .order("created_at", { ascending: true }),
       supabase.from("bar_menu_items").select("*").order("name", { ascending: true }),
+      supabase.from("bar_addons").select("*").order("name", { ascending: true }),
     ])
 
     if (tapsRes.error) {
@@ -99,6 +117,12 @@ export default function BarPage() {
       console.error("Failed to fetch menu items:", menuRes.error)
     } else {
       setMenuItems((menuRes.data as BarMenuItem[]) || [])
+    }
+
+    if (addonsRes.error) {
+      console.error("Failed to fetch add-ons:", addonsRes.error)
+    } else {
+      setAddons((addonsRes.data as BarAddon[]) || [])
     }
     setIsLoading(false)
   }
@@ -303,6 +327,97 @@ export default function BarPage() {
     setIsDeleteItemOpen(true)
   }
 
+  /* ---------- Add-on handlers ---------- */
+  const resetAddonForm = () => {
+    setAddonForm({ name: "", price: "" })
+    setAddonError("")
+  }
+
+  const validateAddon = (): boolean => {
+    if (!addonForm.name.trim()) {
+      setAddonError("Name is required")
+      return false
+    }
+    if (addonForm.price && (isNaN(Number(addonForm.price)) || Number(addonForm.price) < 0)) {
+      setAddonError("Price must be a valid positive number")
+      return false
+    }
+    return true
+  }
+
+  const handleAddAddon = async () => {
+    setAddonError("")
+    if (!validateAddon()) return
+    setIsSavingAddon(true)
+    const { error } = await supabase.from("bar_addons").insert({
+      name: addonForm.name.trim(),
+      price: addonForm.price ? Number(addonForm.price) : 0,
+    })
+    if (error) {
+      setAddonError("Failed to add add-on")
+      console.error(error)
+    } else {
+      setIsAddAddonOpen(false)
+      resetAddonForm()
+      fetchData()
+    }
+    setIsSavingAddon(false)
+  }
+
+  const handleEditAddon = async () => {
+    if (!selectedAddon) return
+    setAddonError("")
+    if (!validateAddon()) return
+    setIsSavingAddon(true)
+    const { error } = await supabase
+      .from("bar_addons")
+      .update({
+        name: addonForm.name.trim(),
+        price: addonForm.price ? Number(addonForm.price) : 0,
+      })
+      .eq("id", selectedAddon.id)
+    if (error) {
+      setAddonError("Failed to update add-on")
+      console.error(error)
+    } else {
+      setIsEditAddonOpen(false)
+      setSelectedAddon(null)
+      resetAddonForm()
+      fetchData()
+    }
+    setIsSavingAddon(false)
+  }
+
+  const handleDeleteAddon = async () => {
+    if (!selectedAddon) return
+    const { error } = await supabase.from("bar_addons").delete().eq("id", selectedAddon.id)
+    if (error) {
+      console.error("Failed to delete add-on:", error)
+      alert("Failed to delete add-on.")
+    } else {
+      setIsDeleteAddonOpen(false)
+      setSelectedAddon(null)
+      fetchData()
+    }
+  }
+
+  const openAddAddon = () => {
+    resetAddonForm()
+    setIsAddAddonOpen(true)
+  }
+
+  const openEditAddon = (addon: BarAddon) => {
+    setSelectedAddon(addon)
+    setAddonForm({ name: addon.name, price: addon.price != null ? String(addon.price) : "" })
+    setAddonError("")
+    setIsEditAddonOpen(true)
+  }
+
+  const openDeleteAddon = (addon: BarAddon) => {
+    setSelectedAddon(addon)
+    setIsDeleteAddonOpen(true)
+  }
+
   return (
     <div className="min-h-dvh bg-background p-4 md:p-6">
       <div className="max-w-5xl mx-auto">
@@ -347,6 +462,15 @@ export default function BarPage() {
           >
             <Wine className="h-4 w-4" />
             Menu Items
+          </Button>
+          <Button
+            variant={section === "addons" ? "default" : "ghost"}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSection("addons")}
+          >
+            <Plus className="h-4 w-4" />
+            Add-ons
           </Button>
         </div>
 
@@ -451,6 +575,65 @@ export default function BarPage() {
                               size="sm"
                               className="gap-1"
                               onClick={() => openDeleteItem(item)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ---------- ADD-ONS SECTION ---------- */}
+        {section === "addons" && (
+          <div>
+            <div className="mb-6">
+              <Button onClick={openAddAddon} className="gap-2">
+                <Plus className="h-4 w-4" />
+                Add Add-on
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Add-ons are global extras (e.g. double shot, extra mixer) that can be applied to any item at the bar.
+            </p>
+
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              {isLoading ? (
+                <div className="text-center py-12 text-muted-foreground">Loading add-ons...</div>
+              ) : addons.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  No add-ons yet. Add your first add-on to get started.
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Price</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {addons.map((addon) => (
+                      <TableRow key={addon.id}>
+                        <TableCell className="font-medium">{addon.name}</TableCell>
+                        <TableCell className="font-mono">+A${addon.price.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button variant="outline" size="sm" className="gap-1" onClick={() => openEditAddon(addon)}>
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="gap-1"
+                              onClick={() => openDeleteAddon(addon)}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -579,6 +762,63 @@ export default function BarPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* ---------- Add-on Dialogs ---------- */}
+        <Dialog open={isAddAddonOpen} onOpenChange={setIsAddAddonOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Add-on</DialogTitle>
+              <DialogDescription>Create a global add-on that can be applied to any item.</DialogDescription>
+            </DialogHeader>
+            <AddonForm formData={addonForm} setFormData={setAddonForm} error={addonError} idPrefix="add" />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsAddAddonOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddAddon} disabled={isSavingAddon}>
+                {isSavingAddon ? "Adding..." : "Add Add-on"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isEditAddonOpen} onOpenChange={setIsEditAddonOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Add-on</DialogTitle>
+              <DialogDescription>Update the add-on name or price.</DialogDescription>
+            </DialogHeader>
+            <AddonForm formData={addonForm} setFormData={setAddonForm} error={addonError} idPrefix="edit" />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsEditAddonOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleEditAddon} disabled={isSavingAddon}>
+                {isSavingAddon ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <AlertDialog open={isDeleteAddonOpen} onOpenChange={setIsDeleteAddonOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Add-on</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete {selectedAddon?.name}? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteAddon}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   )
@@ -674,6 +914,44 @@ function BarItemForm({
           value={formData.description}
           onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
           rows={3}
+        />
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
+  )
+}
+
+function AddonForm({
+  formData,
+  setFormData,
+  error,
+  idPrefix,
+}: {
+  formData: { name: string; price: string }
+  setFormData: React.Dispatch<React.SetStateAction<{ name: string; price: string }>>
+  error: string
+  idPrefix: string
+}) {
+  return (
+    <div className="space-y-4 py-4">
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}-addon-name`}>Name</Label>
+        <Input
+          id={`${idPrefix}-addon-name`}
+          placeholder="e.g. Double shot"
+          value={formData.name}
+          onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}-addon-price`}>Price (A$)</Label>
+        <Input
+          id={`${idPrefix}-addon-price`}
+          placeholder="0.00"
+          inputMode="decimal"
+          value={formData.price}
+          onChange={(e) => setFormData((prev) => ({ ...prev, price: e.target.value }))}
+          className="font-mono"
         />
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
