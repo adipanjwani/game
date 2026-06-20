@@ -8,13 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -54,13 +47,9 @@ interface BarMenuItem {
 interface BarTap {
   id: string
   name: string
-  menu_item_id: string | null
   tap_limit: number | null
   created_at: string
-  menu_item?: BarMenuItem | null
 }
-
-const NONE_VALUE = "__none__"
 
 type Section = "taps" | "menu"
 
@@ -75,7 +64,7 @@ export default function BarPage() {
   const [isEditTapOpen, setIsEditTapOpen] = useState(false)
   const [isDeleteTapOpen, setIsDeleteTapOpen] = useState(false)
   const [selectedTap, setSelectedTap] = useState<BarTap | null>(null)
-  const [tapForm, setTapForm] = useState({ name: "", menu_item_id: NONE_VALUE, tap_limit: "" })
+  const [tapForm, setTapForm] = useState({ name: "", tap_limit: "" })
   const [tapError, setTapError] = useState("")
   const [isSavingTap, setIsSavingTap] = useState(false)
 
@@ -95,7 +84,7 @@ export default function BarPage() {
     const [tapsRes, menuRes] = await Promise.all([
       supabase
         .from("bar_taps")
-        .select("*, menu_item:bar_menu_items(id, name, category, price)")
+        .select("*")
         .order("created_at", { ascending: true }),
       supabase.from("bar_menu_items").select("*").order("name", { ascending: true }),
     ])
@@ -120,7 +109,7 @@ export default function BarPage() {
 
   /* ---------- Tap handlers ---------- */
   const resetTapForm = () => {
-    setTapForm({ name: "", menu_item_id: NONE_VALUE, tap_limit: "" })
+    setTapForm({ name: "", tap_limit: "" })
     setTapError("")
   }
 
@@ -137,7 +126,6 @@ export default function BarPage() {
     setIsSavingTap(true)
     const { error } = await supabase.from("bar_taps").insert({
       name: tapForm.name.trim(),
-      menu_item_id: tapForm.menu_item_id === NONE_VALUE ? null : tapForm.menu_item_id,
       tap_limit: tapForm.tap_limit ? Number(tapForm.tap_limit) : null,
     })
     if (error) {
@@ -167,7 +155,6 @@ export default function BarPage() {
       .from("bar_taps")
       .update({
         name: tapForm.name.trim(),
-        menu_item_id: tapForm.menu_item_id === NONE_VALUE ? null : tapForm.menu_item_id,
         tap_limit: tapForm.tap_limit ? Number(tapForm.tap_limit) : null,
       })
       .eq("id", selectedTap.id)
@@ -196,17 +183,6 @@ export default function BarPage() {
     }
   }
 
-  const handleQuickAssign = async (tap: BarTap, value: string) => {
-    const menu_item_id = value === NONE_VALUE ? null : value
-    const { error } = await supabase.from("bar_taps").update({ menu_item_id }).eq("id", tap.id)
-    if (error) {
-      console.error("Failed to assign menu item:", error)
-      alert("Failed to assign menu item.")
-    } else {
-      fetchData()
-    }
-  }
-
   const openAddTap = () => {
     resetTapForm()
     setIsAddTapOpen(true)
@@ -216,7 +192,6 @@ export default function BarPage() {
     setSelectedTap(tap)
     setTapForm({
       name: tap.name,
-      menu_item_id: tap.menu_item_id || NONE_VALUE,
       tap_limit: tap.tap_limit != null ? String(tap.tap_limit) : "",
     })
     setTapError("")
@@ -378,20 +353,11 @@ export default function BarPage() {
         {/* ---------- TAPS SECTION ---------- */}
         {section === "taps" && (
           <div>
-            <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
+            <div className="mb-6">
               <Button onClick={openAddTap} className="gap-2">
                 <Plus className="h-4 w-4" />
                 Add Tap
               </Button>
-              {menuItems.length === 0 && !isLoading && (
-                <p className="text-sm text-muted-foreground">
-                  No bar menu items yet. Add some in the{" "}
-                  <button className="text-primary underline" onClick={() => setSection("menu")}>
-                    Menu Items
-                  </button>{" "}
-                  tab to assign them to taps.
-                </p>
-              )}
             </div>
 
             {isLoading ? (
@@ -427,40 +393,6 @@ export default function BarPage() {
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
-                    </div>
-
-                    <div className="rounded-md bg-muted/50 px-3 py-2">
-                      {tap.menu_item ? (
-                        <div>
-                          <div className="font-medium text-foreground">{tap.menu_item.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {tap.menu_item.category || "Uncategorised"}
-                            {tap.menu_item.price != null && ` · A$${tap.menu_item.price.toFixed(2)}`}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground italic">Empty tap</span>
-                      )}
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Assigned item</Label>
-                      <Select
-                        value={tap.menu_item_id || NONE_VALUE}
-                        onValueChange={(value) => handleQuickAssign(tap, value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select item" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE_VALUE}>Empty tap</SelectItem>
-                          {menuItems.map((item) => (
-                            <SelectItem key={item.id} value={item.id}>
-                              {item.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
                     </div>
                   </div>
                 ))}
@@ -538,9 +470,9 @@ export default function BarPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add Tap</DialogTitle>
-              <DialogDescription>Create a new bar tap and optionally assign a menu item.</DialogDescription>
+              <DialogDescription>Create a new bar tab with an optional spending limit.</DialogDescription>
             </DialogHeader>
-            <TapForm formData={tapForm} setFormData={setTapForm} menuItems={menuItems} error={tapError} idPrefix="add" />
+            <TapForm formData={tapForm} setFormData={setTapForm} error={tapError} idPrefix="add" />
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsAddTapOpen(false)}>
                 Cancel
@@ -556,9 +488,9 @@ export default function BarPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Edit Tap</DialogTitle>
-              <DialogDescription>Update the tap name or assigned menu item.</DialogDescription>
+              <DialogDescription>Update the tap name or spending limit.</DialogDescription>
             </DialogHeader>
-            <TapForm formData={tapForm} setFormData={setTapForm} menuItems={menuItems} error={tapError} idPrefix="edit" />
+            <TapForm formData={tapForm} setFormData={setTapForm} error={tapError} idPrefix="edit" />
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsEditTapOpen(false)}>
                 Cancel
@@ -655,13 +587,11 @@ export default function BarPage() {
 function TapForm({
   formData,
   setFormData,
-  menuItems,
   error,
   idPrefix,
 }: {
-  formData: { name: string; menu_item_id: string; tap_limit: string }
-  setFormData: React.Dispatch<React.SetStateAction<{ name: string; menu_item_id: string; tap_limit: string }>>
-  menuItems: BarMenuItem[]
+  formData: { name: string; tap_limit: string }
+  setFormData: React.Dispatch<React.SetStateAction<{ name: string; tap_limit: string }>>
   error: string
   idPrefix: string
 }) {
@@ -686,26 +616,6 @@ function TapForm({
           onChange={(e) => setFormData((prev) => ({ ...prev, tap_limit: e.target.value }))}
           className="font-mono"
         />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-tap-item`}>Assigned Menu Item</Label>
-        <Select
-          value={formData.menu_item_id}
-          onValueChange={(value) => setFormData((prev) => ({ ...prev, menu_item_id: value }))}
-        >
-          <SelectTrigger id={`${idPrefix}-tap-item`}>
-            <SelectValue placeholder="Select item" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE_VALUE}>Empty tap</SelectItem>
-            {menuItems.map((item) => (
-              <SelectItem key={item.id} value={item.id}>
-                {item.name}
-                {item.category ? ` (${item.category})` : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
