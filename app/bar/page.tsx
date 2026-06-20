@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Home, Beer, Plus, Minus, Trash2, RefreshCw, ShoppingCart, Banknote, CreditCard, Check, X } from "lucide-react"
+import { Home, Beer, Plus, Minus, Trash2, RefreshCw, ShoppingCart, Banknote, CreditCard, Check, X, Wallet } from "lucide-react"
 
 interface BarMenuItem {
   id: string
@@ -45,6 +45,7 @@ export default function BarPosPage() {
   const [lastPaid, setLastPaid] = useState<PaymentMethod | null>(null)
   const [activeCategory, setActiveCategory] = useState<string>("All")
   const [showTapPicker, setShowTapPicker] = useState(false)
+  const [showBalances, setShowBalances] = useState(false)
 
   const supabase = createClient()
 
@@ -205,6 +206,18 @@ export default function BarPosPage() {
           <h1 className="text-xl md:text-2xl font-bold text-foreground">Bar</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => {
+              fetchTaps()
+              setShowBalances(true)
+            }}
+          >
+            <Wallet className="h-4 w-4" />
+            <span className="hidden sm:inline">Check Balance</span>
+          </Button>
           <Button variant="outline" size="sm" className="gap-1" onClick={fetchMenu}>
             <RefreshCw className="h-4 w-4" />
             <span className="hidden sm:inline">Refresh</span>
@@ -402,6 +415,82 @@ export default function BarPosPage() {
           </div>
         </aside>
       </div>
+
+      {/* Tap balances */}
+      {showBalances && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowBalances(false)}
+        >
+          <div
+            className="w-full max-w-md bg-card border border-border rounded-lg shadow-lg flex flex-col max-h-[80vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Wallet className="h-5 w-5 text-primary" />
+                <h2 className="font-semibold text-foreground">Tap Balances</h2>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setShowBalances(false)}
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {taps.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  No bar taps set up yet.{" "}
+                  <Link href="/admin/bar" className="text-primary underline">
+                    Create one
+                  </Link>
+                  .
+                </div>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {taps.map((tap) => {
+                    const hasLimit = tap.tap_limit != null
+                    const remaining = hasLimit ? (tap.tap_limit as number) - tap.consumed : null
+                    const isOver = remaining != null && remaining < 0
+                    return (
+                      <li key={tap.id} className="flex flex-col gap-1.5 bg-muted/40 rounded-lg p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-foreground">{tap.name}</span>
+                          {hasLimit ? (
+                            <span className={isOver ? "font-semibold text-destructive" : "font-semibold text-primary"}>
+                              A${(remaining as number).toFixed(2)} left
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">No limit</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Consumed: A${tap.consumed.toFixed(2)}
+                          {hasLimit && ` / A$${(tap.tap_limit as number).toFixed(2)}`}
+                        </div>
+                        {hasLimit && (
+                          <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${isOver ? "bg-destructive" : "bg-primary"}`}
+                              style={{
+                                width: `${Math.min(100, (tap.consumed / (tap.tap_limit as number)) * 100)}%`,
+                              }}
+                            />
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bar Tap picker */}
       {showTapPicker && (
