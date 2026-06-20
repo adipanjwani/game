@@ -55,6 +55,7 @@ interface BarTap {
   id: string
   name: string
   menu_item_id: string | null
+  tap_limit: number | null
   created_at: string
   menu_item?: BarMenuItem | null
 }
@@ -74,7 +75,7 @@ export default function BarPage() {
   const [isEditTapOpen, setIsEditTapOpen] = useState(false)
   const [isDeleteTapOpen, setIsDeleteTapOpen] = useState(false)
   const [selectedTap, setSelectedTap] = useState<BarTap | null>(null)
-  const [tapForm, setTapForm] = useState({ name: "", menu_item_id: NONE_VALUE })
+  const [tapForm, setTapForm] = useState({ name: "", menu_item_id: NONE_VALUE, tap_limit: "" })
   const [tapError, setTapError] = useState("")
   const [isSavingTap, setIsSavingTap] = useState(false)
 
@@ -119,7 +120,7 @@ export default function BarPage() {
 
   /* ---------- Tap handlers ---------- */
   const resetTapForm = () => {
-    setTapForm({ name: "", menu_item_id: NONE_VALUE })
+    setTapForm({ name: "", menu_item_id: NONE_VALUE, tap_limit: "" })
     setTapError("")
   }
 
@@ -129,10 +130,15 @@ export default function BarPage() {
       setTapError("Tap name is required")
       return
     }
+    if (tapForm.tap_limit && (isNaN(Number(tapForm.tap_limit)) || Number(tapForm.tap_limit) < 0)) {
+      setTapError("Tap limit must be a valid positive number")
+      return
+    }
     setIsSavingTap(true)
     const { error } = await supabase.from("bar_taps").insert({
       name: tapForm.name.trim(),
       menu_item_id: tapForm.menu_item_id === NONE_VALUE ? null : tapForm.menu_item_id,
+      tap_limit: tapForm.tap_limit ? Number(tapForm.tap_limit) : null,
     })
     if (error) {
       setTapError("Failed to add tap")
@@ -152,12 +158,17 @@ export default function BarPage() {
       setTapError("Tap name is required")
       return
     }
+    if (tapForm.tap_limit && (isNaN(Number(tapForm.tap_limit)) || Number(tapForm.tap_limit) < 0)) {
+      setTapError("Tap limit must be a valid positive number")
+      return
+    }
     setIsSavingTap(true)
     const { error } = await supabase
       .from("bar_taps")
       .update({
         name: tapForm.name.trim(),
         menu_item_id: tapForm.menu_item_id === NONE_VALUE ? null : tapForm.menu_item_id,
+        tap_limit: tapForm.tap_limit ? Number(tapForm.tap_limit) : null,
       })
       .eq("id", selectedTap.id)
     if (error) {
@@ -203,7 +214,11 @@ export default function BarPage() {
 
   const openEditTap = (tap: BarTap) => {
     setSelectedTap(tap)
-    setTapForm({ name: tap.name, menu_item_id: tap.menu_item_id || NONE_VALUE })
+    setTapForm({
+      name: tap.name,
+      menu_item_id: tap.menu_item_id || NONE_VALUE,
+      tap_limit: tap.tap_limit != null ? String(tap.tap_limit) : "",
+    })
     setTapError("")
     setIsEditTapOpen(true)
   }
@@ -392,7 +407,12 @@ export default function BarPage() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <Beer className="h-5 w-5 text-primary" />
-                        <h3 className="font-semibold text-foreground">{tap.name}</h3>
+                        <div>
+                          <h3 className="font-semibold text-foreground">{tap.name}</h3>
+                          <p className="text-xs text-muted-foreground">
+                            {tap.tap_limit != null ? `Limit: A$${tap.tap_limit.toFixed(2)}` : "No limit"}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openEditTap(tap)}>
@@ -639,8 +659,8 @@ function TapForm({
   error,
   idPrefix,
 }: {
-  formData: { name: string; menu_item_id: string }
-  setFormData: React.Dispatch<React.SetStateAction<{ name: string; menu_item_id: string }>>
+  formData: { name: string; menu_item_id: string; tap_limit: string }
+  setFormData: React.Dispatch<React.SetStateAction<{ name: string; menu_item_id: string; tap_limit: string }>>
   menuItems: BarMenuItem[]
   error: string
   idPrefix: string
@@ -654,6 +674,17 @@ function TapForm({
           placeholder="e.g. Tap 1"
           value={formData.name}
           onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}-tap-limit`}>Tap Limit (A$)</Label>
+        <Input
+          id={`${idPrefix}-tap-limit`}
+          placeholder="e.g. 100.00 (optional)"
+          inputMode="decimal"
+          value={formData.tap_limit}
+          onChange={(e) => setFormData((prev) => ({ ...prev, tap_limit: e.target.value }))}
+          className="font-mono"
         />
       </div>
       <div className="space-y-2">
