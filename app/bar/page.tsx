@@ -162,7 +162,7 @@ export default function FrontBarPage() {
                       <div className="font-medium text-foreground">{tap.menu_item.name}</div>
                       <div className="text-xs text-muted-foreground">
                         {tap.menu_item.category || "Uncategorised"}
-                        {tap.menu_item.price != null && ` · £${tap.menu_item.price.toFixed(2)}`}
+                        {tap.menu_item.price != null && ` · A$${tap.menu_item.price.toFixed(2)}`}
                       </div>
                     </div>
                   ) : (
