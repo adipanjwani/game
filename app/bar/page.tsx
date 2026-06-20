@@ -72,7 +72,6 @@ export default function BarPosPage() {
   const [showTapPicker, setShowTapPicker] = useState(false)
   const [showBalances, setShowBalances] = useState(false)
   const [expandedTapId, setExpandedTapId] = useState<string | null>(null)
-  const [customizeItem, setCustomizeItem] = useState<BarMenuItem | null>(null)
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([])
 
   const supabase = createClient()
@@ -213,19 +212,9 @@ export default function BarPosPage() {
   }
 
   const onItemClick = (item: BarMenuItem) => {
-    if (addons.length > 0) {
-      setCustomizeItem(item)
-      setSelectedAddonIds([])
-    } else {
-      addLineToCart(item, [])
-    }
-  }
-
-  const confirmCustomize = () => {
-    if (!customizeItem) return
     const chosen = addons.filter((a) => selectedAddonIds.includes(a.id))
-    addLineToCart(customizeItem, chosen)
-    setCustomizeItem(null)
+    addLineToCart(item, chosen)
+    // Clear the add-on selection after each item so it doesn't carry over to the next drink
     setSelectedAddonIds([])
   }
 
@@ -335,7 +324,8 @@ export default function BarPosPage() {
       </header>
 
       <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
-        {/* Menu */}
+        {/* Menu column */}
+        <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 overflow-y-auto p-4">
           {isLoading ? (
             <div className="text-center py-12 text-muted-foreground">Loading menu...</div>
@@ -389,6 +379,46 @@ export default function BarPosPage() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Add-on selector — choose extras, then tap a drink to apply them */}
+        {addons.length > 0 && (
+          <div className="border-t border-border bg-card px-4 py-3 shrink-0">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Add-ons {selectedAddonIds.length > 0 && `· applied to next drink`}
+              </span>
+              {selectedAddonIds.length > 0 && (
+                <button
+                  onClick={() => setSelectedAddonIds([])}
+                  className="text-xs font-medium text-muted-foreground hover:text-foreground touch-manipulation"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {addons.map((addon) => {
+                const checked = selectedAddonIds.includes(addon.id)
+                return (
+                  <button
+                    key={addon.id}
+                    onClick={() => toggleAddon(addon.id)}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium border transition-colors touch-manipulation ${
+                      checked
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-muted/40 text-foreground hover:border-primary"
+                    }`}
+                  >
+                    {checked && <Check className="h-3.5 w-3.5" />}
+                    {addon.name}
+                    <span className={checked ? "opacity-90" : "text-primary"}>+A${addon.price.toFixed(2)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
         </div>
 
         {/* Cart */}
@@ -523,75 +553,6 @@ export default function BarPosPage() {
           </div>
         </aside>
       </div>
-
-      {/* Item add-on customization */}
-      {customizeItem && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setCustomizeItem(null)}
-        >
-          <div
-            className="w-full max-w-md bg-card border border-border rounded-lg shadow-lg flex flex-col max-h-[80vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <div className="flex flex-col">
-                <h2 className="font-semibold text-foreground">{customizeItem.name}</h2>
-                <span className="text-xs text-muted-foreground">Add extras (optional)</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setCustomizeItem(null)}
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-3">
-              <ul className="flex flex-col gap-2">
-                {addons.map((addon) => {
-                  const checked = selectedAddonIds.includes(addon.id)
-                  return (
-                    <li key={addon.id}>
-                      <button
-                        onClick={() => toggleAddon(addon.id)}
-                        className={`w-full flex items-center justify-between gap-2 rounded-lg p-3 text-left border transition-colors touch-manipulation ${
-                          checked ? "border-primary bg-primary/10" : "border-border bg-muted/40 hover:bg-accent"
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <span
-                            className={`h-5 w-5 rounded flex items-center justify-center border ${
-                              checked ? "bg-primary border-primary text-primary-foreground" : "border-border"
-                            }`}
-                          >
-                            {checked && <Check className="h-3.5 w-3.5" />}
-                          </span>
-                          <span className="font-medium text-foreground">{addon.name}</span>
-                        </span>
-                        <span className="text-sm font-semibold text-primary">+A${addon.price.toFixed(2)}</span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-            <div className="border-t border-border p-3">
-              <Button className="w-full gap-2" onClick={confirmCustomize}>
-                <Plus className="h-4 w-4" />
-                Add to cart
-                {" · A$"}
-                {(
-                  (customizeItem.price ?? 0) +
-                  addons.filter((a) => selectedAddonIds.includes(a.id)).reduce((sum, a) => sum + a.price, 0)
-                ).toFixed(2)}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Tap balances */}
       {showBalances && (
