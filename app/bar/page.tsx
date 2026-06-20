@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Home, Beer, Plus, Minus, Trash2, RefreshCw, ShoppingCart, Banknote, CreditCard, Check, X, Wallet } from "lucide-react"
+import { Home, Beer, Plus, Minus, Trash2, RefreshCw, ShoppingCart, Banknote, CreditCard, Check, X, Wallet, ChevronDown, Receipt } from "lucide-react"
 
 interface BarMenuItem {
   id: string
@@ -14,11 +14,26 @@ interface BarMenuItem {
   category: string | null
 }
 
+interface TapBillLine {
+  name: string
+  addons: string[]
+  unitPrice: number
+  quantity: number
+}
+
 interface BarTap {
   id: string
   name: string
   tap_limit: number | null
   consumed: number
+  bill: TapBillLine[]
+}
+
+interface SaleItem {
+  name?: string
+  price?: number
+  quantity?: number
+  addons?: { name?: string }[]
 }
 
 interface BarAddon {
@@ -56,6 +71,7 @@ export default function BarPosPage() {
   const [activeCategory, setActiveCategory] = useState<string>("All")
   const [showTapPicker, setShowTapPicker] = useState(false)
   const [showBalances, setShowBalances] = useState(false)
+  const [expandedTapId, setExpandedTapId] = useState<string | null>(null)
   const [customizeItem, setCustomizeItem] = useState<BarMenuItem | null>(null)
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([])
 
@@ -89,7 +105,7 @@ export default function BarPosPage() {
   const fetchTaps = async () => {
     const [tapsRes, salesRes] = await Promise.all([
       supabase.from("bar_taps").select("id, name, tap_limit").order("name", { ascending: true }),
-      supabase.from("bar_sales").select("bar_tap_id, total").eq("payment_method", "bar_tap"),
+      supabase.from("bar_sales").select("bar_tap_id, total, items").eq("payment_method", "bar_tap"),
     ])
 
     if (tapsRes.error) {
@@ -101,10 +117,35 @@ export default function BarPosPage() {
     }
 
     const consumedByTap = new Map<string, number>()
-    ;(salesRes.data || []).forEach((sale: { bar_tap_id: string | null; total: number | null }) => {
-      if (!sale.bar_tap_id) return
-      consumedByTap.set(sale.bar_tap_id, (consumedByTap.get(sale.bar_tap_id) || 0) + (sale.total || 0))
-    })
+    // Aggregate identical lines (same name + add-ons + price) per tap
+    const billByTap = new Map<string, Map<string, TapBillLine>>()
+
+    ;(salesRes.data || []).forEach(
+      (sale: { bar_tap_id: string | null; total: number | null; items: SaleItem[] | null }) => {
+        if (!sale.bar_tap_id) return
+        consumedByTap.set(sale.bar_tap_id, (consumedByTap.get(sale.bar_tap_id) || 0) + (sale.total || 0))
+
+        if (!billByTap.has(sale.bar_tap_id)) billByTap.set(sale.bar_tap_id, new Map())
+        const lines = billByTap.get(sale.bar_tap_id)!
+        ;(sale.items || []).forEach((item) => {
+          const addonNames = (item.addons || []).map((a) => a?.name || "").filter(Boolean)
+          const unitPrice = item.price ?? 0
+          const qty = item.quantity ?? 1
+          const key = `${item.name || "Item"}|${addonNames.join(",")}|${unitPrice}`
+          const existing = lines.get(key)
+          if (existing) {
+            existing.quantity += qty
+          } else {
+            lines.set(key, {
+              name: item.name || "Item",
+              addons: addonNames,
+              unitPrice,
+              quantity: qty,
+            })
+          }
+        })
+      },
+    )
 
     const tapsWithBalance: BarTap[] = (tapsRes.data || []).map(
       (tap: { id: string; name: string; tap_limit: number | null }) => ({
@@ -112,6 +153,7 @@ export default function BarPosPage() {
         name: tap.name,
         tap_limit: tap.tap_limit,
         consumed: consumedByTap.get(tap.id) || 0,
+        bill: Array.from(billByTap.get(tap.id)?.values() || []),
       }),
     )
 
@@ -591,6 +633,7 @@ export default function BarPosPage() {
                     const hasLimit = tap.tap_limit != null
                     const remaining = hasLimit ? (tap.tap_limit as number) - tap.consumed : null
                     const isOver = remaining != null && remaining < 0
+                    const isExpanded = expandedTapId === tap.id
                     return (
                       <li key={tap.id} className="flex flex-col gap-1.5 bg-muted/40 rounded-lg p-3">
                         <div className="flex items-center justify-between gap-2">
@@ -616,6 +659,44 @@ export default function BarPosPage() {
                               }}
                             />
                           </div>
+                        )}
+
+                        {tap.bill.length > 0 ? (
+                          <>
+                            <button
+                              onClick={() => setExpandedTapId(isExpanded ? null : tap.id)}
+                              className="mt-1 flex items-center gap-1 text-xs font-medium text-primary touch-manipulation"
+                            >
+                              <Receipt className="h-3.5 w-3.5" />
+                              {isExpanded ? "Hide bill" : "View bill"}
+                              <ChevronDown
+                                className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                              />
+                            </button>
+                            {isExpanded && (
+                              <ul className="mt-1 flex flex-col gap-1.5 border-t border-border pt-2">
+                                {tap.bill.map((line, idx) => (
+                                  <li key={idx} className="flex items-start justify-between gap-2 text-sm">
+                                    <div className="min-w-0">
+                                      <span className="text-foreground">
+                                        {line.quantity} × {line.name}
+                                      </span>
+                                      {line.addons.length > 0 && (
+                                        <span className="block text-xs text-muted-foreground truncate">
+                                          {line.addons.map((a) => `+ ${a}`).join(", ")}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="font-mono text-foreground whitespace-nowrap">
+                                      A${(line.unitPrice * line.quantity).toFixed(2)}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </>
+                        ) : (
+                          tap.consumed === 0 && <p className="text-xs text-muted-foreground italic">No items yet.</p>
                         )}
                       </li>
                     )
