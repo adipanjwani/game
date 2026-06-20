@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Home, Beer, Plus, Minus, Trash2, RefreshCw, ShoppingCart, Banknote, CreditCard, Check } from "lucide-react"
+import { Home, Beer, Plus, Minus, Trash2, RefreshCw, ShoppingCart, Banknote, CreditCard, Check, X } from "lucide-react"
 
 interface BarMenuItem {
   id: string
@@ -12,6 +12,11 @@ interface BarMenuItem {
   description: string | null
   price: number | null
   category: string | null
+}
+
+interface BarTap {
+  id: string
+  name: string
 }
 
 interface CartLine {
@@ -31,11 +36,13 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
 
 export default function BarPosPage() {
   const [menuItems, setMenuItems] = useState<BarMenuItem[]>([])
+  const [taps, setTaps] = useState<BarTap[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [cart, setCart] = useState<CartLine[]>([])
   const [isPaying, setIsPaying] = useState(false)
   const [lastPaid, setLastPaid] = useState<PaymentMethod | null>(null)
   const [activeCategory, setActiveCategory] = useState<string>("All")
+  const [showTapPicker, setShowTapPicker] = useState(false)
 
   const supabase = createClient()
 
@@ -55,8 +62,22 @@ export default function BarPosPage() {
     setIsLoading(false)
   }
 
+  const fetchTaps = async () => {
+    const { data, error } = await supabase
+      .from("bar_taps")
+      .select("id, name")
+      .order("name", { ascending: true })
+
+    if (error) {
+      console.error("Failed to fetch bar taps:", error)
+    } else {
+      setTaps((data as BarTap[]) || [])
+    }
+  }
+
   useEffect(() => {
     fetchMenu()
+    fetchTaps()
   }, [])
 
   const groupedMenu = useMemo(() => {
@@ -112,13 +133,22 @@ export default function BarPosPage() {
     [cart],
   )
 
-  const handlePay = async (method: PaymentMethod) => {
+  const handlePay = async (method: PaymentMethod, tap?: BarTap) => {
     if (cart.length === 0 || isPaying) return
+
+    // Bar tap payments must be charged to a specific tap
+    if (method === "bar_tap" && !tap) {
+      setShowTapPicker(true)
+      return
+    }
+
     setIsPaying(true)
 
     const { error } = await supabase.from("bar_sales").insert({
       total,
       payment_method: method,
+      bar_tap_id: tap?.id ?? null,
+      bar_tap_name: tap?.name ?? null,
       items: cart.map((line) => ({
         id: line.id,
         name: line.name,
@@ -136,6 +166,7 @@ export default function BarPosPage() {
 
     setCart([])
     setLastPaid(method)
+    setShowTapPicker(false)
     setIsPaying(false)
   }
 
@@ -345,6 +376,62 @@ export default function BarPosPage() {
           </div>
         </aside>
       </div>
+
+      {/* Bar Tap picker */}
+      {showTapPicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => !isPaying && setShowTapPicker(false)}
+        >
+          <div
+            className="w-full max-w-md bg-card border border-border rounded-lg shadow-lg flex flex-col max-h-[80vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Beer className="h-5 w-5 text-primary" />
+                <h2 className="font-semibold text-foreground">Charge to which tap?</h2>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setShowTapPicker(false)}
+                disabled={isPaying}
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {taps.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  No bar taps set up yet.{" "}
+                  <Link href="/admin/bar" className="text-primary underline">
+                    Create one
+                  </Link>
+                  .
+                </div>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {taps.map((tap) => (
+                    <li key={tap.id}>
+                      <button
+                        onClick={() => handlePay("bar_tap", tap)}
+                        disabled={isPaying}
+                        className="w-full flex items-center justify-between gap-2 bg-muted/40 hover:bg-accent rounded-lg p-3 text-left transition-colors touch-manipulation disabled:opacity-50"
+                      >
+                        <span className="font-medium text-foreground">{tap.name}</span>
+                        <span className="font-semibold text-primary">A${total.toFixed(2)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
